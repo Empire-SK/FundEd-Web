@@ -101,7 +101,11 @@ export default function PaymentPage() {
   }, [searchValue, availableStudents]);
 
 
-  if (isEventLoading || areStudentsLoading || arePaymentsLoading || !event || !classId) {
+  if (isEventLoading || areStudentsLoading || arePaymentsLoading || !classId) {
+    return <BrandedLoader />;
+  }
+  
+  if (!event) {
     return <BrandedLoader />;
   }
 
@@ -142,7 +146,8 @@ export default function PaymentPage() {
     const newPayment = { ...paymentData, paymentDate: serverTimestamp() };
     addDocumentNonBlocking(collection(firestore, `classes/${classId}/payments`), newPayment);
 
-    await sendPaymentConfirmationEmail({
+    // Fire-and-forget email sending
+    sendPaymentConfirmationEmail({
         studentName: selectedStudent.name,
         studentEmail: selectedStudent.email,
         eventName: event.name,
@@ -305,7 +310,7 @@ export default function PaymentPage() {
     </div>
 
     <AlertDialog open={showQrDialog} onOpenChange={setShowQrDialog}>
-        <AlertDialogContent className="max-w-md">
+      <AlertDialogContent className="max-w-md">
           <AlertDialogHeader>
             <AlertDialogTitle className="flex items-center gap-2">
               <QrCode className="h-6 w-6" />
@@ -317,7 +322,7 @@ export default function PaymentPage() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <div className="flex justify-center p-4">
-            <Image 
+            <Image
               src={event.qrCodeUrl!}
               alt="QR Code"
               width={250}
@@ -332,8 +337,8 @@ export default function PaymentPage() {
                 Submit for Verification
             </Button>
           </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      </AlertDialogContent>
+    </AlertDialog>
 
       <AlertDialog open={showSuccessDialog} onOpenChange={setShowSuccessDialog}>
         <AlertDialogContent>
