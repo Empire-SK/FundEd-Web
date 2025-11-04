@@ -20,7 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Upload, Check, ChevronsUpDown, QrCode, Loader2 } from 'lucide-react';
+import { Upload, Check, ChevronsUpDown, QrCode as QrCodeIcon, Loader2 } from 'lucide-react';
 import { Logo } from '@/components/icons';
 import Link from 'next/link';
 import { ThemeToggle } from '@/components/theme-toggle';
@@ -47,12 +47,16 @@ import {
 } from '@/components/ui/alert-dialog';
 import { useToast } from '@/hooks/use-toast';
 import { useCollection, useDoc, useFirestore, useMemoFirebase } from '@/firebase';
-import { collection, doc, serverTimestamp, Timestamp, query, where } from 'firebase/firestore';
+import { collection, doc, serverTimestamp, Timestamp, query, where, addDoc } from 'firebase/firestore';
 import type { Event, Student, Payment } from '@/lib/types';
-import { addDocumentNonBlocking } from '@/firebase/non-blocking-updates';
 import { sendPaymentConfirmationEmail } from '@/app/actions';
 import { BrandedLoader } from '@/components/ui/branded-loader';
 
+declare global {
+    interface Window {
+        Razorpay: any;
+    }
+}
 
 export default function PaymentPage() {
   const { eventId } = useParams();
@@ -82,7 +86,8 @@ export default function PaymentPage() {
 
   const paidStudentIds = useMemo(() => {
     if (!payments) return new Set();
-    return new Set(payments.map(p => p.studentId));
+    // Includes students who have paid or have a pending verification
+    return new Set(payments.filter(p => p.status === 'Paid' || p.status === 'Verification Pending').map(p => p.studentId));
   }, [payments]);
 
   const availableStudents = useMemo(() => {
@@ -126,7 +131,112 @@ export default function PaymentPage() {
     }
   };
 
-  const handlePaymentSubmission = async (paymentMethod: Payment['paymentMethod'], status: Payment['status'], transactionIdPrefix: string) => {
+  const createPendingPayment = async (orderId: string) => {
+    if (!selectedStudent || !classId || !firestore) return null;
+
+    const paymentData: Omit<Payment, 'id' | 'paymentDate'> = {
+      studentId: selectedStudent.id,
+      eventId: event.id,
+      amount: event.cost,
+      transactionId: 'N/A', // Will be updated by webhook
+      status: 'Pending', // Initial status
+      eventName: event.name,
+      studentName: selectedStudent.name,
+      studentRoll: selectedStudent.rollNo,
+      paymentMethod: 'Razorpay',
+      screenshotUrl: '',
+      razorpay_order_id: orderId,
+    };
+    
+    const newPayment = { ...paymentData, paymentDate: serverTimestamp() };
+    const docRef = await addDoc(collection(firestore, `classes/${classId}/payments`), newPayment);
+    return docRef.id;
+  };
+
+
+  const handleRazorpayPayment = async () => {
+    if (!selectedStudent || !event) return;
+    setIsSubmitting(true);
+
+    try {
+      // 1. Create Order
+      const orderResponse = await fetch('/api/razorpay/order', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          amount: event.cost,
+          eventId: event.id,
+          studentId: selectedStudent.id,
+        }),
+      });
+
+      if (!orderResponse.ok) {
+        throw new Error('Failed to create Razorpay order');
+      }
+
+      const order = await orderResponse.json();
+      
+      // 2. Create pending payment document in Firestore
+      await createPendingPayment(order.id);
+
+      // 3. Open Razorpay Checkout
+      const options = {
+        key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
+        amount: order.amount,
+        currency: order.currency,
+        name: 'FundEd',
+        description: `Payment for ${event.name}`,
+        order_id: order.id,
+        handler: function (response: any) {
+          // This part is mostly for UX. The webhook is the source of truth.
+          sendPaymentConfirmationEmail({
+              studentName: selectedStudent.name,
+              studentEmail: selectedStudent.email,
+              eventName: event.name,
+              amount: event.cost,
+              paymentMethod: 'Razorpay',
+          });
+          setShowSuccessDialog(true);
+        },
+        prefill: {
+          name: selectedStudent.name,
+          email: selectedStudent.email,
+        },
+        notes: {
+            eventId: event.id,
+            studentId: selectedStudent.id,
+            classId: classId,
+        },
+        theme: {
+          color: '#3399cc',
+        },
+      };
+
+      const rzp = new window.Razorpay(options);
+      rzp.on('payment.failed', function (response: any) {
+        toast({
+            variant: 'destructive',
+            title: 'Payment Failed',
+            description: response.error.description || 'Something went wrong.'
+        });
+        // Optionally update the payment doc to 'Failed' here
+      });
+      rzp.open();
+
+    } catch (error) {
+      console.error(error);
+      toast({
+        variant: 'destructive',
+        title: 'Error',
+        description: 'Could not initiate payment. Please try again.',
+      });
+    } finally {
+        setIsSubmitting(false);
+    }
+  }
+
+
+  const handleOtherPaymentSubmission = async (paymentMethod: 'QR Scan' | 'Cash', status: 'Verification Pending') => {
     if (!selectedStudent || !classId || !firestore) return;
     setIsSubmitting(true);
     
@@ -134,7 +244,7 @@ export default function PaymentPage() {
       studentId: selectedStudent.id,
       eventId: event.id,
       amount: event.cost,
-      transactionId: `${transactionIdPrefix}_${Date.now()}`,
+      transactionId: `${paymentMethod.replace(' ', '')}_${Date.now()}`,
       status: status,
       eventName: event.name,
       studentName: selectedStudent.name,
@@ -144,9 +254,8 @@ export default function PaymentPage() {
     };
     
     const newPayment = { ...paymentData, paymentDate: serverTimestamp() };
-    addDocumentNonBlocking(collection(firestore, `classes/${classId}/payments`), newPayment);
+    await addDoc(collection(firestore, `classes/${classId}/payments`), newPayment);
 
-    // Fire-and-forget email sending
     sendPaymentConfirmationEmail({
         studentName: selectedStudent.name,
         studentEmail: selectedStudent.email,
@@ -162,7 +271,9 @@ export default function PaymentPage() {
   const handlePayClick = () => {
     if (isSubmitting) return;
 
-    if (selectedMethod === 'qr') {
+    if (selectedMethod === 'razorpay') {
+        handleRazorpayPayment();
+    } else if (selectedMethod === 'qr') {
       if (event.qrCodeUrl) {
         setShowQrDialog(true);
       } else {
@@ -172,19 +283,15 @@ export default function PaymentPage() {
           description: "The class representative has not uploaded a QR code for this event."
         })
       }
-    } else if (selectedMethod === 'razorpay') {
-      toast({ title: "Processing Razorpay payment..."});
-      handlePaymentSubmission('Razorpay', 'Paid', 'RAZORPAY');
     } else if (selectedMethod === 'cash') {
-      handlePaymentSubmission('Cash', 'Verification Pending', 'CASH');
+      handleOtherPaymentSubmission('Cash', 'Verification Pending');
     }
   };
 
   const handleSubmitQrPayment = async () => {
     if (isSubmitting) return;
     setShowQrDialog(false);
-    await handlePaymentSubmission('QR Scan', 'Verification Pending', 'QR');
-    // Success dialog is shown by handlePaymentSubmission
+    await handleOtherPaymentSubmission('QR Scan', 'Verification Pending');
   }
 
 
@@ -313,7 +420,7 @@ export default function PaymentPage() {
       <AlertDialogContent className="max-w-md">
           <AlertDialogHeader>
             <AlertDialogTitle className="flex items-center gap-2">
-              <QrCode className="h-6 w-6" />
+              <QrCodeIcon className="h-6 w-6" />
               Scan to Pay
             </AlertDialogTitle>
             <AlertDialogDescription>
@@ -348,7 +455,7 @@ export default function PaymentPage() {
             </div>
             <AlertDialogTitle className="text-center">Payment Submitted!</AlertDialogTitle>
             <AlertDialogDescription className="text-center">
-              Your payment has been submitted for verification. You will receive an email confirmation shortly.
+              Your payment has been submitted. You will receive an email confirmation shortly. If paid via Razorpay, your status will update automatically.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

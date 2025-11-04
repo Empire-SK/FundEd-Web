@@ -14,6 +14,7 @@ export type Payment = {
   status: 'Paid' | 'Pending' | 'Failed' | 'Verification Pending';
   paymentMethod: 'Razorpay' | 'QR Scan' | 'Cash' | 'N/A';
   screenshotUrl?: string;
+  razorpay_order_id?: string;
 };
 
 // Re-exporting Payment as Transaction for backwards compatibility in some components
