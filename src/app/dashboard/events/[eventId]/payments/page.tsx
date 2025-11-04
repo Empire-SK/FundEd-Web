@@ -62,7 +62,7 @@ export default function EventPaymentsPage() {
   const studentsRef = useMemoFirebase(() => firestore ? collection(firestore, `classes/${classId}/students`) : null, [firestore, classId]);
   const { data: students, isLoading: areStudentsLoading } = useCollection<Student>(studentsRef);
   
-  const handlePaymentAction = async (transaction: Transaction, newStatus: 'Paid' | 'Failed') => {
+  const handlePaymentAction = (transaction: Transaction, newStatus: 'Paid' | 'Failed') => {
     if (!firestore) return;
     const paymentRef = doc(firestore, `classes/${classId}/payments`, transaction.id);
     updateDocumentNonBlocking(paymentRef, { status: newStatus });
@@ -75,15 +75,16 @@ export default function EventPaymentsPage() {
     if (newStatus === 'Paid' && event) {
         const student = students?.find(s => s.id === transaction.studentId);
         if (student) {
-            await sendPaymentApprovedEmail({
+            // Fire-and-forget: Don't await this. Let it run in the background.
+            sendPaymentApprovedEmail({
                 studentName: student.name,
                 studentEmail: student.email,
                 eventName: event.name,
                 amount: transaction.amount,
             });
              toast({
-                title: "Approval Email Sent",
-                description: `An email has been sent to ${student.name} confirming their payment.`,
+                title: "Approval Email Queued",
+                description: `An email will be sent to ${student.name} confirming their payment.`,
             });
         }
     }
