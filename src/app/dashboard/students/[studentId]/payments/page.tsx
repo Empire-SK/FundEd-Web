@@ -21,10 +21,10 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ArrowLeft } from 'lucide-react';
 import type { Transaction, Student } from '@/lib/types';
-import { useCollection, useDoc, useFirestore, useMemoFirebase } from '@/firebase';
-import { collection, doc, query, where, Timestamp } from 'firebase/firestore';
 import { BrandedLoader } from '@/components/ui/branded-loader';
-
+import { useState, useEffect } from 'react';
+import { getStudentPayments } from '@/actions/student-payments';
+import { useToast } from '@/hooks/use-toast';
 
 const getStatusBadgeVariant = (status: Transaction['status']) => {
   switch (status) {
@@ -41,30 +41,43 @@ const getStatusBadgeVariant = (status: Transaction['status']) => {
   }
 };
 
-
 export default function StudentPaymentsPage() {
   const { studentId } = useParams();
-  const firestore = useFirestore();
-  // TODO: Replace with dynamic classId from user profile
-  const classId = 'class-1';
   const studentIdStr = studentId as string;
+  const { toast } = useToast();
 
-  const studentRef = useMemoFirebase(() => firestore && studentIdStr ? doc(firestore, `classes/${classId}/students`, studentIdStr) : null, [firestore, studentIdStr, classId]);
-  const { data: student, isLoading: isStudentLoading } = useDoc<Student>(studentRef);
-  
-  const paymentsQuery = useMemoFirebase(() => firestore && studentIdStr ? query(collection(firestore, `classes/${classId}/payments`), where('studentId', '==', studentIdStr)) : null, [firestore, studentIdStr, classId]);
-  const { data: transactions, isLoading: areTransactionsLoading } = useCollection<Transaction>(paymentsQuery);
+  const [student, setStudent] = useState<Student | null>(null);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-  const formatDate = (date: Date | Timestamp | string) => {
-    const d = date instanceof Timestamp ? date.toDate() : new Date(date);
+  useEffect(() => {
+    const fetchPayments = async () => {
+      setIsLoading(true);
+      const res = await getStudentPayments(studentIdStr);
+      if (res.success && res.data) {
+        setStudent(res.data.student as unknown as Student);
+        setTransactions(res.data.transactions as unknown as Transaction[]);
+      } else {
+        toast({ variant: 'destructive', title: 'Error', description: 'Failed to fetch payments' });
+      }
+      setIsLoading(false);
+    };
+    if (studentIdStr) {
+      fetchPayments();
+    }
+  }, [studentIdStr]);
+
+
+  const formatDate = (date: string | Date) => {
+    const d = new Date(date);
     return d.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: '2-digit' });
   };
 
-  if (isStudentLoading || areTransactionsLoading) {
+  if (isLoading) {
     return (
-        <Card className="flex items-center justify-center py-12">
-            <BrandedLoader />
-        </Card>
+      <Card className="flex items-center justify-center py-12">
+        <BrandedLoader />
+      </Card>
     )
   }
 
@@ -76,7 +89,7 @@ export default function StudentPaymentsPage() {
         </CardHeader>
         <CardContent>
           <p>The student you are looking for does not exist.</p>
-           <Button asChild variant="link" className="mt-4 px-0">
+          <Button asChild variant="link" className="mt-4 px-0">
             <Link href="/dashboard/students">
               <ArrowLeft className="mr-2 h-4 w-4" />
               Back to Students
@@ -95,93 +108,94 @@ export default function StudentPaymentsPage() {
       </Badge>
     );
   };
-  
 
   return (
     <Card>
       <CardHeader>
         <div className="flex items-center gap-4">
-            <Button asChild variant="outline" size="icon">
-                <Link href="/dashboard/students">
-                    <ArrowLeft className="h-4 w-4" />
-                    <span className="sr-only">Back</span>
-                </Link>
-            </Button>
-            <div>
-                <CardTitle>Payments for {student.name}</CardTitle>
-                <CardDescription>
-                A list of all transactions made by this student.
-                </CardDescription>
-            </div>
+          <Button asChild variant="outline" size="icon">
+            <Link href="/dashboard/students">
+              <ArrowLeft className="h-4 w-4" />
+              <span className="sr-only">Back</span>
+            </Link>
+          </Button>
+          <div>
+            <CardTitle>Payments for {student.name}</CardTitle>
+            <CardDescription>
+              A list of all transactions made by this student.
+            </CardDescription>
+          </div>
         </div>
       </CardHeader>
       <CardContent>
-         {/* Mobile View */}
+        {/* Mobile View */}
         <div className="grid gap-4 md:hidden">
-            {transactions?.map(transaction => (
-              <Card key={transaction.id} className="w-full">
-                <CardHeader>
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <CardTitle className="text-lg font-code">{transaction.id}</CardTitle>
-                      <CardDescription>{transaction.eventName}</CardDescription>
-                    </div>
-                     <StatusBadge status={transaction.status} />
+          {transactions?.map(transaction => (
+            <Card key={transaction.id} className="w-full">
+              <CardHeader>
+                <div className="flex justify-between items-start">
+                  <div>
+                    <CardTitle className="text-lg font-code">{transaction.id}</CardTitle>
+                    <CardDescription>{transaction.eventName}</CardDescription>
                   </div>
-                </CardHeader>
-                <CardContent className="grid gap-4">
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-muted-foreground">Amount</span>
-                    <span className="font-semibold">₹{transaction.amount.toLocaleString()}</span>
-                  </div>
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-muted-foreground">Date</span>
-                    <span>{formatDate(transaction.paymentDate)}</span>
-                  </div>
-                   <div className="flex items-center justify-between text-sm">
-                    <span className="text-muted-foreground">Method</span>
-                    <span>{transaction.paymentMethod}</span>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
+                  <StatusBadge status={transaction.status} />
+                </div>
+              </CardHeader>
+              <CardContent className="grid gap-4">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-muted-foreground">Amount</span>
+                  <span className="font-semibold">₹{transaction.amount.toLocaleString()}</span>
+                </div>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-muted-foreground">Date</span>
+                  <span>{formatDate(transaction.paymentDate)}</span>
+                </div>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-muted-foreground">Method</span>
+                  <span>{transaction.paymentMethod}</span>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
         </div>
 
         {/* Desktop View */}
         <div className="hidden md:block">
-            <Table>
+          <Table>
             <TableHeader>
-                <TableRow>
-                <TableHead>Transaction ID</TableHead>
-                <TableHead>Event</TableHead>
-                <TableHead>Amount</TableHead>
-                <TableHead>Date</TableHead>
-                <TableHead>Method</TableHead>
-                <TableHead>Status</TableHead>
-                </TableRow>
+              <TableRow>
+                <TableHead className="text-center">Transaction ID</TableHead>
+                <TableHead className="text-center">Event</TableHead>
+                <TableHead className="text-center">Amount</TableHead>
+                <TableHead className="text-center">Date</TableHead>
+                <TableHead className="text-center">Method</TableHead>
+                <TableHead className="text-center">Status</TableHead>
+              </TableRow>
             </TableHeader>
             <TableBody>
-                {transactions?.map((transaction) => (
+              {transactions?.map((transaction) => (
                 <TableRow key={transaction.id}>
-                    <TableCell className="font-code">{transaction.id}</TableCell>
-                    <TableCell>
+                  <TableCell className="font-code text-center">{transaction.id}</TableCell>
+                  <TableCell className="text-center">
                     <div className="font-medium">{transaction.eventName}</div>
-                    </TableCell>
-                    <TableCell>₹{transaction.amount.toLocaleString()}</TableCell>
-                    <TableCell>{formatDate(transaction.paymentDate)}</TableCell>
-                    <TableCell>{transaction.paymentMethod}</TableCell>
-                    <TableCell>
-                    <StatusBadge status={transaction.status} />
-                    </TableCell>
+                  </TableCell>
+                  <TableCell className="text-center">₹{transaction.amount.toLocaleString()}</TableCell>
+                  <TableCell className="text-center">{formatDate(transaction.paymentDate)}</TableCell>
+                  <TableCell className="text-center">{transaction.paymentMethod}</TableCell>
+                  <TableCell className="text-center">
+                    <div className="flex justify-center">
+                      <StatusBadge status={transaction.status} />
+                    </div>
+                  </TableCell>
                 </TableRow>
-                ))}
+              ))}
             </TableBody>
-            </Table>
+          </Table>
         </div>
         {transactions?.length === 0 && (
-            <div className="text-center py-12 text-muted-foreground">
-                No payments found for this student.
-            </div>
+          <div className="text-center py-12 text-muted-foreground">
+            No payments found for this student.
+          </div>
         )}
       </CardContent>
     </Card>

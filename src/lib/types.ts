@@ -1,4 +1,3 @@
-import { Timestamp } from "firebase/firestore";
 import { z } from 'zod';
 
 export type Payment = {
@@ -8,13 +7,16 @@ export type Payment = {
   studentRoll: string; // denormalized
   eventId: string;
   eventName: string; // denormalized
+  eventCost?: number; // denormalized for balance calculation
   amount: number;
-  paymentDate: Timestamp | Date | string;
+  paymentDate: Date | string;
   transactionId: string;
   status: 'Paid' | 'Pending' | 'Failed' | 'Verification Pending';
   paymentMethod: 'Razorpay' | 'QR Scan' | 'Cash' | 'N/A';
   screenshotUrl?: string;
   razorpay_order_id?: string;
+  createdAt?: Date | string;
+  updatedAt?: Date | string;
 };
 
 // Re-exporting Payment as Transaction for backwards compatibility in some components
@@ -24,13 +26,16 @@ export type Event = {
   id: string;
   name: string;
   description: string;
-  deadline: Timestamp | Date | string;
+  deadline: Date | string;
   cost: number;
   totalCollected: number;
   totalPending: number;
   paymentOptions: ('Razorpay' | 'QR' | 'Cash')[];
   qrCodeUrl?: string;
   category: 'Normal' | 'Print';
+  createdAt?: Date | string;
+  updatedAt?: Date | string;
+  payments?: Payment[];
 };
 
 export type Student = {
@@ -53,7 +58,7 @@ export type PrintDistribution = {
   studentName: string;
   studentRoll: string;
   eventId: string;
-  distributedAt: Timestamp | Date | string;
+  distributedAt: Date | string;
 };
 
 export const SendEmailInputSchema = z.object({

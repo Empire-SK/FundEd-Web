@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
   Card,
   CardContent,
@@ -10,7 +10,7 @@ import {
   CardFooter,
 } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Check, ChevronsUpDown, PackageCheck } from 'lucide-react';
+import { Check, ChevronsUpDown, PackageCheck, Loader2 } from 'lucide-react';
 import {
   Popover,
   PopoverContent,
@@ -43,41 +43,47 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { useCollection, useFirestore, useMemoFirebase } from '@/firebase';
-import { collection, query, where, Timestamp } from 'firebase/firestore';
-import { addDocumentNonBlocking } from '@/firebase/non-blocking-updates';
 import { sendPrintDistributionEmail } from '@/app/actions';
+import { getPrintData, distributePrint } from '@/actions/prints';
+import { PageLoader } from '@/components/ui/page-loader';
 
 export default function PrintsPage() {
-  const firestore = useFirestore();
-  // TODO: Replace with dynamic classId from user profile
-  const classId = 'class-1';
   const [open, setOpen] = useState(false);
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
   const [searchValue, setSearchValue] = useState('');
   const [selectedEventId, setSelectedEventId] = useState<string | undefined>(undefined);
   const { toast } = useToast();
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const printEventsQuery = useMemoFirebase(() => firestore ? query(collection(firestore, `classes/${classId}/events`), where('category', '==', 'Print')) : null, [firestore, classId]);
-  const { data: printEvents } = useCollection<Event>(printEventsQuery);
+  const [printEvents, setPrintEvents] = useState<Event[]>([]);
+  const [distributions, setDistributions] = useState<PrintDistribution[]>([]);
+  const [paidPayments, setPaidPayments] = useState<Payment[]>([]);
+  const [allStudents, setAllStudents] = useState<Student[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-  const studentsQuery = useMemoFirebase(() => firestore ? collection(firestore, `classes/${classId}/students`) : null, [firestore, classId]);
-  const { data: allStudents } = useCollection<Student>(studentsQuery);
-  
-  const distributionsQuery = useMemoFirebase(() => (firestore && selectedEventId) ? query(collection(firestore, `classes/${classId}/print_distributions`), where('eventId', '==', selectedEventId)) : null, [firestore, selectedEventId, classId]);
-  const { data: distributions } = useCollection<PrintDistribution>(distributionsQuery);
-  
+  useEffect(() => {
+    const fetchData = async () => {
+      setIsLoading(true);
+      const res = await getPrintData();
+      if (res.success && res.data) {
+        setPrintEvents(res.data.events as unknown as Event[]);
+        if (selectedEventId) {
+          setDistributions(res.data.distributions as unknown as PrintDistribution[]);
+          setPaidPayments(res.data.payments as unknown as Payment[]);
+          setAllStudents(res.data.students as unknown as Student[]);
+        }
+      } else {
+        toast({ variant: 'destructive', title: 'Error', description: 'Failed to fetch data' });
+      }
+      setIsLoading(false);
+    };
+    fetchData();
+  }, [selectedEventId]);
 
-  const studentsWhoPaidQuery = useMemoFirebase(() => {
-    if (!selectedEventId || !firestore) return null;
-    return query(collection(firestore, `classes/${classId}/payments`), where('eventId', '==', selectedEventId), where('status', '==', 'Paid'));
-  }, [firestore, selectedEventId]);
-
-  const { data: paidPayments } = useCollection<Payment>(studentsWhoPaidQuery);
 
   const studentsWhoPaid = useMemo(() => {
     if (!allStudents || !paidPayments || !distributions) return [];
-    
+
     const paidStudentIds = paidPayments.map(p => p.studentId);
     const distributedStudentIds = distributions.map(d => d.studentId);
 
@@ -93,53 +99,63 @@ export default function PrintsPage() {
         student.rollNo.toLowerCase().includes(searchValue.toLowerCase())
     );
   }, [searchValue, studentsWhoPaid]);
-  
-  const eventDistributions = distributions;
+
   const selectedEvent = printEvents?.find(e => e.id === selectedEventId);
 
   const handleDistribute = async () => {
-    if (selectedStudent && selectedEventId && firestore && selectedEvent) {
-        const newDistribution: Omit<PrintDistribution, 'id' | 'distributedAt'> = {
-            studentId: selectedStudent.id,
-            studentName: selectedStudent.name,
-            studentRoll: selectedStudent.rollNo,
-            eventId: selectedEventId,
-        };
-        
-        addDocumentNonBlocking(collection(firestore, `classes/${classId}/print_distributions`), {
-            ...newDistribution,
-            distributedAt: Timestamp.now(),
-        });
-        
+    if (selectedStudent && selectedEventId && selectedEvent) {
+      setIsSubmitting(true);
+
+      const res = await distributePrint({
+        studentId: selectedStudent.id,
+        eventId: selectedEventId,
+      });
+
+      if (res.success) {
         const emailResult = await sendPrintDistributionEmail({
-            studentName: selectedStudent.name,
-            studentEmail: selectedStudent.email,
-            eventName: selectedEvent.name,
+          studentName: selectedStudent.name,
+          studentEmail: selectedStudent.email,
+          eventName: selectedEvent.name,
         });
 
         if (emailResult.success) {
-            toast({
-                title: 'Print Distributed & Email Sent',
-                description: `${selectedStudent.name} has received their prints and an email has been sent.`,
-            });
+          toast({
+            title: 'Print Distributed & Email Sent',
+            description: `${selectedStudent.name} has received their prints and an email has been sent.`,
+          });
         } else {
-             toast({
-                variant: 'destructive',
-                title: 'Print Distributed, but Email Failed',
-                description: `The print for ${selectedStudent.name} was marked as distributed, but the email failed to send. Reason: ${emailResult.message}`,
-            });
+          toast({
+            variant: 'destructive',
+            title: 'Print Distributed, but Email Failed',
+            description: `The print for ${selectedStudent.name} was marked as distributed, but the email failed to send. Reason: ${emailResult.message}`,
+          });
+        }
+
+        // Refresh data
+        const newData = await getPrintData();
+        if (newData.success && newData.data) {
+          setDistributions(newData.data.distributions as unknown as PrintDistribution[]);
         }
 
         setSelectedStudent(null);
         setSearchValue('');
+      } else {
+        toast({ variant: 'destructive', title: 'Error', description: 'Failed to distribute print' });
+      }
+
+      setIsSubmitting(false);
     }
   };
 
-  const formatDate = (date: Date | Timestamp | string) => {
-    const d = date instanceof Timestamp ? date.toDate() : new Date(date);
+  const formatDate = (date: string | Date) => {
+    const d = new Date(date);
     return d.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: '2-digit' });
   };
 
+
+  if (isLoading) {
+    return <PageLoader message="Loading print distribution data..." />;
+  }
 
   return (
     <div className="grid gap-8">
@@ -151,19 +167,19 @@ export default function PrintsPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4 md:grid-cols-2 md:gap-6">
-            <div className="grid gap-2">
-              <Label>Select Print Event</Label>
-              <Select onValueChange={setSelectedEventId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select an event" />
-                </SelectTrigger>
-                <SelectContent>
-                  {printEvents?.map(event => (
-                    <SelectItem key={event.id} value={event.id}>{event.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+          <div className="grid gap-2">
+            <Label>Select Print Event</Label>
+            <Select onValueChange={setSelectedEventId}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select an event" />
+              </SelectTrigger>
+              <SelectContent>
+                {printEvents?.map(event => (
+                  <SelectItem key={event.id} value={event.id}>{event.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
           <div className="grid gap-2">
             <Label htmlFor="student">Search Student (Name or Roll No.)</Label>
             <Popover open={open} onOpenChange={setOpen}>
@@ -188,7 +204,7 @@ export default function PrintsPage() {
                     value={searchValue}
                     onValueChange={setSearchValue}
                   />
-                   <CommandList>
+                  <CommandList>
                     <CommandEmpty>No student found.</CommandEmpty>
                     <CommandGroup>
                       {filteredStudents.map((student) => (
@@ -206,7 +222,7 @@ export default function PrintsPage() {
                               selectedStudent?.id === student.id ? 'opacity-100' : 'opacity-0'
                             )}
                           />
-                           <div>
+                          <div>
                             <p className="font-medium">{student.name}</p>
                             <p className="text-xs text-muted-foreground">{student.rollNo}</p>
                           </div>
@@ -220,10 +236,10 @@ export default function PrintsPage() {
           </div>
         </CardContent>
         <CardFooter>
-            <Button disabled={!selectedStudent} onClick={handleDistribute}>
-                <PackageCheck className="mr-2 h-4 w-4" />
-                Mark as Distributed
-            </Button>
+          <Button disabled={!selectedStudent || isSubmitting} onClick={handleDistribute}>
+            {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <PackageCheck className="mr-2 h-4 w-4" />}
+            Mark as Distributed
+          </Button>
         </CardFooter>
       </Card>
 
@@ -237,20 +253,20 @@ export default function PrintsPage() {
         <CardContent>
           {/* Mobile View */}
           <div className="grid gap-4 md:hidden">
-              {eventDistributions?.map(dist => (
-                  <Card key={dist.id}>
-                    <CardContent className="p-4 flex justify-between items-center">
-                        <div>
-                            <p className="font-medium">{dist.studentName}</p>
-                            <p className="text-sm text-muted-foreground">{dist.studentRoll}</p>
-                        </div>
-                        <div className="text-right text-sm text-muted-foreground">
-                            <p>{formatDate(dist.distributedAt)}</p>
-                            <p>{new Date(dist.distributedAt instanceof Timestamp ? dist.distributedAt.toDate() : dist.distributedAt).toLocaleTimeString()}</p>
-                        </div>
-                    </CardContent>
-                  </Card>
-              ))}
+            {distributions?.map(dist => (
+              <Card key={dist.id}>
+                <CardContent className="p-4 flex justify-between items-center">
+                  <div>
+                    <p className="font-medium">{dist.studentName}</p>
+                    <p className="text-sm text-muted-foreground">{dist.studentRoll}</p>
+                  </div>
+                  <div className="text-right text-sm text-muted-foreground">
+                    <p>{formatDate(dist.distributedAt)}</p>
+                    <p>{new Date(dist.distributedAt).toLocaleTimeString()}</p>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
           </div>
           {/* Desktop View */}
           <div className="hidden md:block">
@@ -264,22 +280,22 @@ export default function PrintsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {eventDistributions?.map(dist => (
+                {distributions?.map(dist => (
                   <TableRow key={dist.id}>
                     <TableCell className="font-medium">{dist.studentName}</TableCell>
                     <TableCell>{dist.studentRoll}</TableCell>
                     <TableCell>{formatDate(dist.distributedAt)}</TableCell>
-                    <TableCell>{new Date(dist.distributedAt instanceof Timestamp ? dist.distributedAt.toDate() : dist.distributedAt).toLocaleTimeString()}</TableCell>
+                    <TableCell>{new Date(dist.distributedAt).toLocaleTimeString()}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
             </Table>
           </div>
-           {eventDistributions?.length === 0 && (
+          {distributions?.length === 0 && (
             <div className="text-center py-12 text-muted-foreground">
-                No distribution history for this event yet.
+              No distribution history for this event yet.
             </div>
-        )}
+          )}
         </CardContent>
       </Card>
     </div>

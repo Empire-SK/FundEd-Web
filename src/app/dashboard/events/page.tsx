@@ -1,497 +1,468 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import Image from 'next/image';
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
+    Card,
+    CardContent,
+    CardDescription,
+    CardFooter,
+    CardHeader,
+    CardTitle,
 } from '@/components/ui/card';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
-import { MoreHorizontal, PlusCircle, Copy, Pencil, Eye, Trash2 } from 'lucide-react';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-  DialogClose,
-} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import type { Event, QrCode, Payment } from '@/lib/types';
-import { useState, useMemo } from 'react';
-import { useToast } from '@/hooks/use-toast';
-import { Checkbox } from '@/components/ui/checkbox';
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import { useCollection, useFirestore, useMemoFirebase } from '@/firebase';
-import { collection, doc } from 'firebase/firestore';
-import { addDocumentNonBlocking, setDocumentNonBlocking, deleteDocumentNonBlocking } from '@/firebase/non-blocking-updates';
-import { Timestamp } from 'firebase/firestore';
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
-import { Loader } from '@/components/ui/loader';
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+    DialogTrigger,
+} from '@/components/ui/dialog';
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { Calendar } from '@/components/ui/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Badge } from '@/components/ui/badge';
+import { Progress } from '@/components/ui/progress';
+import {
+    Plus,
+    MoreVertical,
+    Edit,
+    Trash2,
+    Eye,
+    Link as LinkIcon,
+    Calendar as CalendarIcon,
+    Wallet,
+    TrendingUp,
+    DollarSign,
+    Users,
+} from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { useToast } from '@/hooks/use-toast';
+import { getEvents, createEvent, updateEvent, deleteEvent } from '@/actions/events';
+import { getStudents } from '@/actions/students';
+import type { Event, Student } from '@/lib/types';
+import { format } from 'date-fns';
+import { GlassCard } from '@/components/ui/glass-card';
+import { PageLoader } from '@/components/ui/page-loader';
 
 export default function EventsPage() {
-  const firestore = useFirestore();
-  // TODO: Replace with dynamic classId from user profile
-  const classId = 'class-1';
+    const [events, setEvents] = useState<Event[]>([]);
+    const [students, setStudents] = useState<Student[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [isDialogOpen, setIsDialogOpen] = useState(false);
+    const [editingEvent, setEditingEvent] = useState<Event | null>(null);
+    const { toast } = useToast();
 
-  const eventsCollection = useMemoFirebase(() => firestore ? collection(firestore, `classes/${classId}/events`) : null, [firestore, classId]);
-  const { data: events, isLoading: areEventsLoading } = useCollection<Event>(eventsCollection);
+    // Form state
+    const [name, setName] = useState('');
+    const [description, setDescription] = useState('');
+    const [cost, setCost] = useState('');
+    const [deadline, setDeadline] = useState<Date>();
+    const [category, setCategory] = useState<'Normal' | 'Print'>('Normal');
+    const [paymentOptions, setPaymentOptions] = useState<string[]>(['Razorpay']);
 
-  const qrCodesCollection = useMemoFirebase(() => firestore ? collection(firestore, `classes/${classId}/qrcodes`) : null, [firestore, classId]);
-  const { data: qrCodes, isLoading: areQrCodesLoading } = useCollection<QrCode>(qrCodesCollection);
+    useEffect(() => {
+        fetchData();
+    }, []);
 
-  const paymentsCollection = useMemoFirebase(() => firestore ? collection(firestore, `classes/${classId}/payments`) : null, [firestore, classId]);
-  const { data: payments } = useCollection<Payment>(paymentsCollection);
+    const fetchData = async () => {
+        setIsLoading(true);
+        const [eventsRes, studentsRes] = await Promise.all([
+            getEvents(),
+            getStudents()
+        ]);
 
+        if (eventsRes.success && eventsRes.data) {
+            setEvents(eventsRes.data as unknown as Event[]);
+        }
 
-  const [open, setOpen] = useState(false);
-  const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
-  const { toast } = useToast();
-  const [paymentOptions, setPaymentOptions] = useState<('Razorpay' | 'QR' | 'Cash')[]>([]);
-  const [selectedQrCode, setSelectedQrCode] = useState<string | undefined>(undefined);
-  const [category, setCategory] = useState<Event['category']>('Normal');
+        if (studentsRes.success && studentsRes.students) {
+            setStudents(studentsRes.students as unknown as Student[]);
+        }
 
-  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [eventToDelete, setEventToDelete] = useState<Event | null>(null);
-  const [deleteConfirmation, setDeleteConfirmation] = useState('');
-
-  const getCollectedAmountForEvent = (eventId: string) => {
-    if (!payments) return 0;
-    return payments
-      .filter(p => p.eventId === eventId && p.status === 'Paid')
-      .reduce((acc, p) => acc + p.amount, 0);
-  }
-
-  const formatDate = (date: Date | Timestamp | string) => {
-    const d = date instanceof Timestamp ? date.toDate() : new Date(date);
-    return d.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: '2-digit' });
-  };
-
-
-  const handleCopyLink = (eventId: string) => {
-    const link = `${window.location.origin}/pay/${eventId}?classId=${classId}`;
-    navigator.clipboard.writeText(link);
-    toast({
-      title: 'Link Copied',
-      description: 'Payment link has been copied to your clipboard.',
-    });
-  };
-
-  const handleEdit = (event: Event) => {
-    setSelectedEvent(event);
-    setPaymentOptions(event.paymentOptions);
-    setSelectedQrCode(event.qrCodeUrl);
-    setCategory(event.category);
-    setOpen(true);
-  };
-
-  const handleCreateNew = () => {
-    setSelectedEvent(null);
-    setPaymentOptions(['Razorpay']);
-    setSelectedQrCode(undefined);
-    setCategory('Normal');
-    setOpen(true);
-  };
-
-  const handlePaymentOptionChange = (option: 'Razorpay' | 'QR' | 'Cash') => {
-    setPaymentOptions(prev => 
-      prev.includes(option) ? prev.filter(item => item !== option) : [...prev, option]
-    );
-  }
-  
-  const handleSaveEvent = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!firestore) return;
-
-    const form = e.target as HTMLFormElement;
-    const formData = new FormData(form);
-    const name = formData.get('name') as string;
-    const description = formData.get('description') as string;
-    const cost = Number(formData.get('cost'));
-    const deadline = formData.get('deadline') as string;
-
-    const eventData: Omit<Event, 'id' | 'totalCollected' | 'totalPending'> = {
-      name,
-      description,
-      cost,
-      deadline: Timestamp.fromDate(new Date(deadline)),
-      paymentOptions,
-      qrCodeUrl: selectedQrCode || '',
-      category,
+        setIsLoading(false);
     };
 
-    if (selectedEvent) {
-      // Update existing event
-      const eventRef = doc(firestore, `classes/${classId}/events`, selectedEvent.id);
-      const dataToUpdate = {
-        ...eventData,
-      };
-      setDocumentNonBlocking(eventRef, dataToUpdate, { merge: true });
-      toast({ title: 'Event Updated' });
-    } else {
-      // Create new event
-      const dataToCreate = {
-        ...eventData,
-        totalCollected: 0,
-        totalPending: 0,
-      };
-      addDocumentNonBlocking(collection(firestore, `classes/${classId}/events`), dataToCreate);
-      toast({ title: 'Event Created' });
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+
+        if (!name || !description || !cost || !deadline) {
+            toast({ variant: 'destructive', title: 'Error', description: 'Please fill all required fields' });
+            return;
+        }
+
+        const eventData = {
+            name,
+            description,
+            cost: parseFloat(cost),
+            deadline: deadline.toISOString(),
+            category,
+            paymentOptions,
+        };
+
+        const result = editingEvent
+            ? await updateEvent(editingEvent.id, eventData)
+            : await createEvent(eventData);
+
+        if (result.success) {
+            toast({
+                title: editingEvent ? 'Event Updated' : 'Event Created',
+                description: `${name} has been ${editingEvent ? 'updated' : 'created'} successfully`,
+            });
+            setIsDialogOpen(false);
+            resetForm();
+            fetchData();
+        } else {
+            toast({ variant: 'destructive', title: 'Error', description: result.error });
+        }
+    };
+
+    const handleDelete = async (id: string) => {
+        if (!confirm('Are you sure you want to delete this event?')) return;
+
+        const result = await deleteEvent(id);
+        if (result.success) {
+            toast({ title: 'Event Deleted', description: 'Event has been deleted successfully' });
+            fetchData();
+        } else {
+            toast({ variant: 'destructive', title: 'Error', description: result.error });
+        }
+    };
+
+    const handleEdit = (event: Event) => {
+        setEditingEvent(event);
+        setName(event.name);
+        setDescription(event.description);
+        setCost(event.cost.toString());
+        setDeadline(new Date(event.deadline));
+        setCategory(event.category);
+        setPaymentOptions(event.paymentOptions);
+        setIsDialogOpen(true);
+    };
+
+    const resetForm = () => {
+        setEditingEvent(null);
+        setName('');
+        setDescription('');
+        setCost('');
+        setDeadline(undefined);
+        setCategory('Normal');
+        setPaymentOptions(['Razorpay']);
+    };
+
+    const copyPaymentLink = (eventId: string) => {
+        const link = `${window.location.origin}/pay/${eventId}`;
+        navigator.clipboard.writeText(link);
+        toast({ title: 'Link Copied', description: 'Payment link copied to clipboard' });
+    };
+
+    const getCollectionProgress = (event: Event) => {
+        if (students.length === 0) return 0;
+
+        // Count unique students who have paid for this event
+        const paidStudentsCount = event.payments
+            ? new Set(event.payments.filter(p => p.status === 'Paid').map(p => p.studentId)).size
+            : 0;
+
+        // Calculate percentage: (paid students / total students) * 100
+        return (paidStudentsCount / students.length) * 100;
+    };
+
+    if (isLoading) {
+        return <PageLoader message="Loading events..." />;
     }
 
-    setOpen(false);
-  }
+    return (
+        <div className="space-y-6 animate-fade-in">
+            {/* Header */}
+            <div className="flex items-center justify-between">
+                <div>
+                    <h2 className="text-3xl font-bold tracking-tight">Events</h2>
+                    <p className="text-muted-foreground mt-2">
+                        Manage fund collection events and track payments
+                    </p>
+                </div>
 
-  const openDeleteDialog = (event: Event) => {
-    setEventToDelete(event);
-    setDeleteDialogOpen(true);
-  }
 
-  const handleDeleteEvent = () => {
-    if (!firestore || !eventToDelete) return;
-    const eventRef = doc(firestore, `classes/${classId}/events`, eventToDelete.id);
-    deleteDocumentNonBlocking(eventRef);
-    toast({ title: 'Event Deleted', description: `${eventToDelete.name} has been removed.` });
-    setDeleteDialogOpen(false);
-    setEventToDelete(null);
-    setDeleteConfirmation('');
-  }
+                <div className="flex gap-2">
+                    <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+                        <DialogTrigger asChild>
+                            <Button onClick={resetForm} className="gap-2 gradient-primary">
+                                <Plus className="h-4 w-4" />
+                                Create Event
+                            </Button>
+                        </DialogTrigger>
+                        <DialogContent className="max-w-2xl">
+                            <form onSubmit={handleSubmit}>
+                                <DialogHeader>
+                                    <DialogTitle>{editingEvent ? 'Edit Event' : 'Create New Event'}</DialogTitle>
+                                    <DialogDescription>
+                                        {editingEvent ? 'Update event details' : 'Create a new fund collection event'}
+                                    </DialogDescription>
+                                </DialogHeader>
 
-  const selectedQrCodeData = qrCodes?.find(qr => qr.url === selectedQrCode);
+                                <div className="grid gap-4 py-4">
+                                    <div className="grid gap-2">
+                                        <Label htmlFor="name">Event Name *</Label>
+                                        <Input
+                                            id="name"
+                                            value={name}
+                                            onChange={(e) => setName(e.target.value)}
+                                            placeholder="e.g., Annual Day Fund"
+                                            required
+                                        />
+                                    </div>
 
-  const EventActions = ({ event }: { event: Event }) => (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button aria-haspopup="true" size="icon" variant="ghost">
-          <MoreHorizontal className="h-4 w-4" />
-          <span className="sr-only">Toggle menu</span>
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
-        <DropdownMenuLabel>Actions</DropdownMenuLabel>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={() => handleEdit(event)}>
-          <Pencil className="mr-2 h-4 w-4" />
-          Edit
-        </DropdownMenuItem>
-        <DropdownMenuItem asChild>
-          <Link href={`/dashboard/events/${event.id}/payments`}>
-            <Eye className="mr-2 h-4 w-4" />
-            View Payments
-          </Link>
-        </DropdownMenuItem>
-        <DropdownMenuItem onClick={() => handleCopyLink(event.id)}>
-          <Copy className="mr-2 h-4 w-4" />
-          Copy Payment Link
-        </DropdownMenuItem>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem className="text-destructive" onClick={() => openDeleteDialog(event)}>
-            <Trash2 className="mr-2 h-4 w-4" />
-            Delete
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
+                                    <div className="grid gap-2">
+                                        <Label htmlFor="description">Description *</Label>
+                                        <Textarea
+                                            id="description"
+                                            value={description}
+                                            onChange={(e) => setDescription(e.target.value)}
+                                            placeholder="Describe the event..."
+                                            rows={3}
+                                            required
+                                        />
+                                    </div>
 
-  return (
-    <>
-    <Card>
-      <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex-1">
-          <CardTitle>Events</CardTitle>
-          <CardDescription>
-            Manage your class events and fund collections.
-          </CardDescription>
-        </div>
-        <Dialog open={open} onOpenChange={setOpen}>
-          <DialogTrigger asChild>
-            <Button className="w-full sm:w-auto" onClick={handleCreateNew}>
-              <PlusCircle className="mr-2 h-4 w-4" />
-              <span className="whitespace-nowrap">Create Event</span>
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="max-h-[90vh] overflow-y-auto">
-            <form onSubmit={handleSaveEvent}>
-              <DialogHeader>
-                <DialogTitle>{selectedEvent ? 'Edit Event' : 'Create New Event'}</DialogTitle>
-                <DialogDescription>
-                  {selectedEvent
-                    ? 'Update the details for your event.'
-                    : 'Fill in the details below to create a new event for fund collection.'}
-                </DialogDescription>
-              </DialogHeader>
-              <div className="grid gap-4 py-4">
-                <div className="grid grid-cols-4 items-center gap-4">
-                  <Label htmlFor="name" className="text-right">
-                    Name
-                  </Label>
-                  <Input
-                    id="name"
-                    name="name"
-                    defaultValue={selectedEvent?.name}
-                    placeholder="e.g., Annual Tech Fest"
-                    className="col-span-3"
-                    required
-                  />
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div className="grid gap-2">
+                                            <Label htmlFor="cost">Cost (₹) *</Label>
+                                            <Input
+                                                id="cost"
+                                                type="number"
+                                                step="0.01"
+                                                value={cost}
+                                                onChange={(e) => setCost(e.target.value)}
+                                                placeholder="0.00"
+                                                required
+                                            />
+                                        </div>
+
+                                        <div className="grid gap-2">
+                                            <Label>Deadline *</Label>
+                                            <Popover>
+                                                <PopoverTrigger asChild>
+                                                    <Button
+                                                        variant="outline"
+                                                        className={cn(
+                                                            'justify-start text-left font-normal',
+                                                            !deadline && 'text-muted-foreground'
+                                                        )}
+                                                    >
+                                                        <CalendarIcon className="mr-2 h-4 w-4" />
+                                                        {deadline ? format(deadline, 'PPP') : <span>Pick a date</span>}
+                                                    </Button>
+                                                </PopoverTrigger>
+                                                <PopoverContent className="w-auto p-0">
+                                                    <Calendar
+                                                        mode="single"
+                                                        selected={deadline}
+                                                        onSelect={setDeadline}
+                                                        initialFocus
+                                                    />
+                                                </PopoverContent>
+                                            </Popover>
+                                        </div>
+                                    </div>
+
+                                    <div className="grid gap-2">
+                                        <Label>Category</Label>
+                                        <div className="flex gap-4">
+                                            <div className="flex items-center space-x-2">
+                                                <Checkbox
+                                                    id="normal"
+                                                    checked={category === 'Normal'}
+                                                    onCheckedChange={() => setCategory('Normal')}
+                                                />
+                                                <label htmlFor="normal" className="text-sm cursor-pointer">
+                                                    Normal
+                                                </label>
+                                            </div>
+                                            <div className="flex items-center space-x-2">
+                                                <Checkbox
+                                                    id="print"
+                                                    checked={category === 'Print'}
+                                                    onCheckedChange={() => setCategory('Print')}
+                                                />
+                                                <label htmlFor="print" className="text-sm cursor-pointer">
+                                                    Print
+                                                </label>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="grid gap-2">
+                                        <Label>Payment Options</Label>
+                                        <div className="flex gap-4">
+                                            {['Razorpay', 'QR', 'Cash'].map((option) => (
+                                                <div key={option} className="flex items-center space-x-2">
+                                                    <Checkbox
+                                                        id={option}
+                                                        checked={paymentOptions.includes(option)}
+                                                        onCheckedChange={(checked) => {
+                                                            if (checked) {
+                                                                setPaymentOptions([...paymentOptions, option]);
+                                                            } else {
+                                                                setPaymentOptions(paymentOptions.filter((o) => o !== option));
+                                                            }
+                                                        }}
+                                                    />
+                                                    <label htmlFor={option} className="text-sm cursor-pointer">
+                                                        {option}
+                                                    </label>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <DialogFooter>
+                                    <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>
+                                        Cancel
+                                    </Button>
+                                    <Button type="submit">
+                                        {editingEvent ? 'Update Event' : 'Create Event'}
+                                    </Button>
+                                </DialogFooter>
+                            </form>
+                        </DialogContent>
+                    </Dialog>
                 </div>
-                <div className="grid grid-cols-4 items-center gap-4">
-                  <Label htmlFor="description" className="text-right">
-                    Description
-                  </Label>
-                  <Textarea
-                    id="description"
-                    name="description"
-                    defaultValue={selectedEvent?.description}
-                    placeholder="A short description of the event"
-                    className="col-span-3"
-                    required
-                  />
-                </div>
-                 <div className="grid grid-cols-4 items-center gap-4">
-                  <Label htmlFor="category" className="text-right">
-                    Category
-                  </Label>
-                  <div className="col-span-3">
-                      <Select onValueChange={(value) => setCategory(value as Event['category'])} value={category}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select a category" />
-                        </SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="Normal">Normal</SelectItem>
-                            <SelectItem value="Print">Print</SelectItem>
-                        </SelectContent>
-                      </Select>
-                  </div>
-                </div>
-                <div className="grid grid-cols-4 items-center gap-4">
-                  <Label htmlFor="cost" className="text-right">
-                    Cost (₹)
-                  </Label>
-                  <Input
-                    id="cost"
-                    name="cost"
-                    type="number"
-                    defaultValue={selectedEvent?.cost}
-                    placeholder="e.g., 500"
-                    className="col-span-3"
-                    required
-                  />
-                </div>
-                <div className="grid grid-cols-4 items-center gap-4">
-                  <Label htmlFor="deadline" className="text-right">
-                    Deadline
-                  </Label>
-                  <Input
-                    id="deadline"
-                    name="deadline"
-                    type="date"
-                    defaultValue={
-                      selectedEvent?.deadline ? new Date(selectedEvent.deadline instanceof Timestamp ? selectedEvent.deadline.toDate() : selectedEvent.deadline).toISOString().split('T')[0] : ''
-                    }
-                    className="col-span-3"
-                    required
-                  />
-                </div>
-                <div className="grid grid-cols-4 items-start gap-4">
-                  <Label className="text-right pt-2">
-                    Payment Options
-                  </Label>
-                  <div className="col-span-3 grid gap-2">
-                      <div className="flex items-center space-x-2">
-                          <Checkbox id="razorpay" checked={paymentOptions.includes('Razorpay')} onCheckedChange={() => handlePaymentOptionChange('Razorpay')} />
-                          <label htmlFor="razorpay" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">Razorpay</label>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                          <Checkbox id="qr" checked={paymentOptions.includes('QR')} onCheckedChange={() => handlePaymentOptionChange('QR')} />
-                          <label htmlFor="qr" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">QR Code</label>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                          <Checkbox id="cash" checked={paymentOptions.includes('Cash')} onCheckedChange={() => handlePaymentOptionChange('Cash')} />
-                          <label htmlFor="cash" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">Cash</label>
-                      </div>
-                  </div>
-                </div>
-                {paymentOptions.includes('QR') && (
-                  <div className="grid grid-cols-4 items-center gap-4">
-                    <Label htmlFor="qr-code" className="text-right">
-                      QR Code
-                    </Label>
-                    <div className="col-span-3">
-                      <Select onValueChange={setSelectedQrCode} value={selectedQrCode}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select a QR code" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {areQrCodesLoading ? <SelectItem value="loading" disabled>Loading...</SelectItem> : qrCodes?.map(qr => (
-                            <SelectItem key={qr.id} value={qr.url}>{qr.name}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                       {selectedQrCodeData && (
-                        <div className="mt-2 flex items-center gap-2 p-2 rounded-md border bg-muted/50">
-                          <Image src={selectedQrCodeData.url} alt={selectedQrCodeData.name} width={40} height={40} className="rounded-sm" />
-                          <p className="text-sm font-medium">{selectedQrCodeData.name}</p>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
-              <DialogFooter>
-                <DialogClose asChild>
-                  <Button type="button" variant="secondary">
-                    Cancel
-                  </Button>
-                </DialogClose>
-                <Button type="submit">
-                  {selectedEvent ? 'Save Changes' : 'Create Event'}
-                </Button>
-              </DialogFooter>
-            </form>
-          </DialogContent>
-        </Dialog>
-      </CardHeader>
-      <CardContent>
-        {areEventsLoading ? <div className="flex justify-center items-center py-12"><Loader text="Loading events..." /></div> : (
-            <>
-            {/* Mobile View */}
-            <div className="grid gap-4 md:hidden">
-              {events?.map((event) => (
-                <Card key={event.id} className="w-full">
-                  <CardHeader>
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <CardTitle className="text-lg">{event.name}</CardTitle>
-                        <CardDescription>{event.description}</CardDescription>
-                      </div>
-                      <EventActions event={event} />
-                    </div>
-                  </CardHeader>
-                  <CardContent className="grid gap-4">
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-muted-foreground">Cost</span>
-                      <span>₹{event.cost.toLocaleString()}</span>
-                    </div>
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-muted-foreground">Collected</span>
-                      <span className="font-semibold text-green-600 dark:text-green-400">
-                        ₹{getCollectedAmountForEvent(event.id).toLocaleString()}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-muted-foreground">Deadline</span>
-                      <span>{formatDate(event.deadline)}</span>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
             </div>
 
-            {/* Desktop View */}
-            <div className="hidden md:block">
-                <Table>
-                <TableHeader>
-                    <TableRow>
-                    <TableHead>Event</TableHead>
-                    <TableHead className="hidden sm:table-cell">Cost</TableHead>
-                    <TableHead className="hidden md:table-cell">Collected</TableHead>
-                    <TableHead>Deadline</TableHead>
-                    <TableHead>
-                        <span className="sr-only">Actions</span>
-                    </TableHead>
-                    </TableRow>
-                </TableHeader>
-                <TableBody>
-                    {events?.map((event) => (
-                    <TableRow key={event.id}>
-                        <TableCell>
-                        <div className="font-bold">{event.name}</div>
-                        <div className="text-sm text-muted-foreground hidden sm:inline">
-                            {event.description}
-                        </div>
-                        </TableCell>
-                        <TableCell className="hidden sm:table-cell">₹{event.cost.toLocaleString()}</TableCell>
-                        <TableCell className="text-green-600 dark:text-green-400 hidden md:table-cell font-semibold">
-                        ₹{getCollectedAmountForEvent(event.id).toLocaleString()}
-                        </TableCell>
-                        <TableCell>{formatDate(event.deadline)}</TableCell>
-                        <TableCell className="text-right">
-                          <EventActions event={event} />
-                        </TableCell>
-                    </TableRow>
+            {/* Events Grid */}
+            {isLoading ? (
+                <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+                    {[1, 2, 3].map((i) => (
+                        <Card key={i} className="skeleton h-64" />
                     ))}
-                </TableBody>
-                </Table>
-            </div>
+                </div>
+            ) : events.length === 0 ? (
+                <Card className="py-12">
+                    <CardContent className="text-center">
+                        <Wallet className="h-12 w-12 mx-auto mb-4 opacity-20" />
+                        <p className="text-lg font-medium">No Events Yet</p>
+                        <p className="text-sm text-muted-foreground mt-1">
+                            Create your first fund collection event to get started
+                        </p>
+                    </CardContent>
+                </Card>
+            ) : (
+                <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+                    {events.map((event) => (
+                        <GlassCard key={event.id} className="group hover-lift relative overflow-hidden">
+                            <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-primary/10 to-transparent rounded-full -mr-16 -mt-16" />
 
-            {events?.length === 0 && !areEventsLoading && (
-                <div className="text-center py-12 text-muted-foreground">
-                    No events created yet.
+                            <CardHeader>
+                                <div className="flex items-start justify-between">
+                                    <div className="flex-1">
+                                        <CardTitle className="text-xl">{event.name}</CardTitle>
+                                        <CardDescription className="mt-1">{event.description}</CardDescription>
+                                    </div>
+
+                                    <DropdownMenu>
+                                        <DropdownMenuTrigger asChild>
+                                            <Button variant="ghost" size="icon" className="h-8 w-8">
+                                                <MoreVertical className="h-4 w-4" />
+                                            </Button>
+                                        </DropdownMenuTrigger>
+                                        <DropdownMenuContent align="end">
+                                            <DropdownMenuItem asChild>
+                                                <Link href={`/dashboard/events/${event.id}/payments`}>
+                                                    <Eye className="mr-2 h-4 w-4" />
+                                                    View Payments
+                                                </Link>
+                                            </DropdownMenuItem>
+                                            <DropdownMenuItem onClick={() => handleEdit(event)}>
+                                                <Edit className="mr-2 h-4 w-4" />
+                                                Edit
+                                            </DropdownMenuItem>
+                                            <DropdownMenuItem onClick={() => copyPaymentLink(event.id)}>
+                                                <LinkIcon className="mr-2 h-4 w-4" />
+                                                Copy Payment Link
+                                            </DropdownMenuItem>
+                                            <DropdownMenuItem
+                                                onClick={() => handleDelete(event.id)}
+                                                className="text-destructive"
+                                            >
+                                                <Trash2 className="mr-2 h-4 w-4" />
+                                                Delete
+                                            </DropdownMenuItem>
+                                        </DropdownMenuContent>
+                                    </DropdownMenu>
+                                </div>
+                            </CardHeader>
+
+                            <CardContent className="space-y-4">
+                                <div className="flex items-center justify-between text-sm">
+                                    <span className="text-muted-foreground">Cost per student</span>
+                                    <span className="font-semibold text-lg">₹{event.cost.toLocaleString()}</span>
+                                </div>
+
+                                <div className="flex items-center justify-between text-sm">
+                                    <span className="text-muted-foreground">Deadline</span>
+                                    <Badge variant="outline">
+                                        {format(new Date(event.deadline), 'MMM dd, yyyy')}
+                                    </Badge>
+                                </div>
+
+                                <div className="space-y-2">
+                                    <div className="flex items-center justify-between text-sm">
+                                        <span className="text-muted-foreground">Collection Progress</span>
+                                        <span className="font-medium">{Math.round(getCollectionProgress(event))}%</span>
+                                    </div>
+                                    <Progress value={getCollectionProgress(event)} className="h-2" />
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-2 pt-2">
+                                    <div className="text-center p-3 rounded-lg bg-green-50 dark:bg-green-950/20">
+                                        <p className="text-xs text-muted-foreground">Collected</p>
+                                        <p className="text-lg font-bold text-green-600 dark:text-green-400">
+                                            ₹{(event.totalCollected || 0).toLocaleString()}
+                                        </p>
+                                    </div>
+                                    <div className="text-center p-3 rounded-lg bg-orange-50 dark:bg-orange-950/20">
+                                        <p className="text-xs text-muted-foreground">Pending</p>
+                                        <p className="text-lg font-bold text-orange-600 dark:text-orange-400">
+                                            ₹{(event.totalPending || 0).toLocaleString()}
+                                        </p>
+                                    </div>
+                                </div>
+                            </CardContent>
+
+                            <CardFooter className="flex gap-2">
+                                <Button asChild variant="outline" className="flex-1" size="sm">
+                                    <Link href={`/dashboard/events/${event.id}/payments`}>
+                                        <Users className="mr-2 h-4 w-4" />
+                                        View Payments
+                                    </Link>
+                                </Button>
+                                <Button
+                                    variant="default"
+                                    className="flex-1"
+                                    size="sm"
+                                    onClick={() => copyPaymentLink(event.id)}
+                                >
+                                    <LinkIcon className="mr-2 h-4 w-4" />
+                                    Share Link
+                                </Button>
+                            </CardFooter>
+                        </GlassCard>
+                    ))}
                 </div>
             )}
-            </>
-        )}
-      </CardContent>
-    </Card>
-    
-    <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
-          <AlertDialogDescription>
-            This action cannot be undone. This will permanently delete the
-            event <span className="font-semibold text-foreground">{eventToDelete?.name}</span> and all associated payments. 
-            To confirm, please type <strong className="text-foreground">delete</strong> below.
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <Input
-            value={deleteConfirmation}
-            onChange={(e) => setDeleteConfirmation(e.target.value)}
-            placeholder="delete"
-            className="my-2"
-          />
-        <AlertDialogFooter>
-          <AlertDialogCancel onClick={() => setDeleteConfirmation('')}>Cancel</AlertDialogCancel>
-          <AlertDialogAction
-            onClick={handleDeleteEvent}
-            disabled={deleteConfirmation !== 'delete'}
-            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-          >
-            Delete Event
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
-
-    </>
-  );
+        </div>
+    );
 }

@@ -1,0 +1,95 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String
+  name      String?
+  role      String   @default("admin")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Student {
+  id        String   @id @default(cuid())
+  rollNo    String
+  name      String
+  email     String
+  class     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  payments           Payment[]
+  printDistributions PrintDistribution[]
+
+  @@unique([rollNo, class])
+}
+
+model Event {
+  id             String   @id @default(cuid())
+  name           String
+  description    String
+  deadline       DateTime
+  cost           Float
+  paymentOptions String   // Stored as JSON string: ["Razorpay", "QR", "Cash"]
+  qrCodeUrl      String?
+  category       String   // 'Normal' | 'Print'
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  payments           Payment[]
+  printDistributions PrintDistribution[]
+}
+
+model Payment {
+  id                String   @id @default(cuid())
+  amount            Float
+  paymentDate       DateTime @default(now())
+  transactionId     String?   // Optional because it might not exist for Cash
+  status            String   // 'Paid' | 'Pending' | 'Failed' | 'Verification Pending'
+  paymentMethod     String   // 'Razorpay' | 'QR Scan' | 'Cash' | 'N/A'
+  screenshotUrl     String?
+  razorpay_order_id String?
+  
+  // Manual payment tracking
+  isManualEntry     Boolean  @default(false)
+  recordedBy        String?  // User ID who recorded the payment
+  manualEntryNotes  String?  // Admin notes for manual entry
+  receiptNumber     String?  // Optional receipt number
+  
+  studentId String
+  student   Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  
+  eventId   String
+  event     Event   @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model PrintDistribution {
+  id            String   @id @default(cuid())
+  distributedAt DateTime @default(now())
+  
+  studentId String
+  student   Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  
+  eventId   String
+  event     Event   @relation(fields: [eventId], references: [id], onDelete: Cascade)
+}
+
+model QrCode {
+  id   String @id @default(cuid())
+  name String
+  url  String
+}
