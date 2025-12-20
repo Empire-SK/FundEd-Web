@@ -1,10 +1,6 @@
-
 import { NextResponse } from 'next/server';
 import crypto from 'crypto';
-import { initializeFirebase } from '@/firebase/server-init';
-
-// This is required to initialize the admin app on the server
-const { firestore } = initializeFirebase();
+import prisma from '@/lib/db';
 
 export async function POST(request: Request) {
   const secret = process.env.RAZORPAY_WEBHOOK_SECRET;
@@ -36,32 +32,26 @@ export async function POST(request: Request) {
       const paymentEntity = event.payload.payment.entity;
       const orderId = paymentEntity.order_id;
 
-      const { eventId, studentId, classId } = paymentEntity.notes || {};
+      // Find payment by razorpay_order_id
+      const payment = await prisma.payment.findFirst({
+        where: { razorpay_order_id: orderId }
+      });
 
-      if (!classId || !eventId || !studentId) {
-        console.warn('Webhook received for order without required notes:', orderId);
-        return NextResponse.json({ status: 'ignored', reason: 'Missing required notes' });
-      }
-
-      // Use the Admin SDK's querying surface (do not mix client SDK helpers)
-      const paymentsCollectionRef = firestore.collection(`classes/${classId}/payments`);
-      const querySnapshot = await paymentsCollectionRef.where('razorpay_order_id', '==', orderId).get();
-
-      if (querySnapshot.empty) {
+      if (!payment) {
         console.error('No payment document found for order_id:', orderId);
         return NextResponse.json({ error: 'Payment document not found' }, { status: 404 });
       }
 
-      const paymentDoc = querySnapshot.docs[0];
-      const paymentRef = paymentDoc.ref;
-
-      // Update the payment doc (idempotent)
-      await paymentRef.update({
-        status: 'Paid',
-        transactionId: paymentEntity.id,
+      // Update the payment doc
+      await prisma.payment.update({
+        where: { id: payment.id },
+        data: {
+            status: 'Paid',
+            transactionId: paymentEntity.id,
+        }
       });
 
-      console.log(`Payment ${paymentDoc.id} updated to Paid for order ${orderId}`);
+      console.log(`Payment ${payment.id} updated to Paid for order ${orderId}`);
     }
 
     return NextResponse.json({ status: 'ok' });

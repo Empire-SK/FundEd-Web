@@ -1,459 +1,307 @@
 'use client';
 
+import { useState, useEffect } from 'react';
+import Link from 'next/link';
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
+    Card,
+    CardContent,
+    CardDescription,
+    CardHeader,
+    CardTitle,
 } from '@/components/ui/card';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
-import { Upload, MoreHorizontal, PlusCircle, Download, FileQuestion, Loader2, Trash2, Eye } from 'lucide-react';
 import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuTrigger,
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-  DialogClose,
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogHeader,
+    DialogTitle,
+    DialogTrigger,
 } from '@/components/ui/dialog';
-import { Label } from '@/components/ui/label';
-import { useCollection, useFirestore, useMemoFirebase } from '@/firebase';
-import { collection, writeBatch, doc, query } from 'firebase/firestore';
-import type { Student } from '@/lib/types';
-import { useState, useRef, useMemo } from 'react';
+import {
+    Upload,
+    Search,
+    MoreVertical,
+    Eye,
+    Trash2,
+    DollarSign,
+    Mail,
+    User,
+    GraduationCap,
+} from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { addDocumentNonBlocking, deleteDocumentNonBlocking } from '@/firebase/non-blocking-updates';
+import { getStudents, deleteStudent, uploadStudentsCsv } from '@/actions/students';
+import { getEvents } from '@/actions/events';
+import type { Student, Event } from '@/lib/types';
+import { GlassCard } from '@/components/ui/glass-card';
+import { AddStudentDialog } from '@/components/add-student-dialog';
+import { CSVDropzone } from '@/components/csv-dropzone';
 import Papa from 'papaparse';
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
-import Link from 'next/link';
-import { Loader } from '@/components/ui/loader';
 
-// Natural sort function for alphanumeric strings (e.g., "A-1", "A-10", "A-2")
-const naturalSort = (a: string, b: string) => {
-  return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
-};
-
+import { PageLoader } from '@/components/ui/page-loader';
 
 export default function StudentsPage() {
-  const firestore = useFirestore();
-  const [searchTerm, setSearchTerm] = useState('');
-  const [addStudentOpen, setAddStudentOpen] = useState(false);
-  const [uploadCsvOpen, setUploadCsvOpen] = useState(false);
-  const [isUploading, setIsUploading] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [studentToDelete, setStudentToDelete] = useState<Student | null>(null);
-  const [deleteConfirmation, setDeleteConfirmation] = useState('');
+    const [students, setStudents] = useState<Student[]>([]);
+    const [events, setEvents] = useState<Event[]>([]);
+    const [searchQuery, setSearchQuery] = useState('');
+    const [isLoading, setIsLoading] = useState(true);
+    const [isUploading, setIsUploading] = useState(false);
+    const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
+    const { toast } = useToast();
 
-  const { toast } = useToast();
-  // TODO: Replace with dynamic classId from user profile
-  const classId = 'class-1';
+    useEffect(() => {
+        fetchData();
+    }, []);
 
-  const studentsQuery = useMemoFirebase(() => firestore ? query(collection(firestore, `classes/${classId}/students`)) : null, [firestore, classId]);
-  const { data: students, isLoading } = useCollection<Student>(studentsQuery);
+    const fetchData = async () => {
+        setIsLoading(true);
+        const [studentsRes, eventsRes] = await Promise.all([
+            getStudents(),
+            getEvents()
+        ]);
 
-  const filteredStudents = useMemo(() => {
-    if (!students) return [];
+        if (studentsRes.success && studentsRes.students) {
+            setStudents(studentsRes.students as unknown as Student[]);
+        }
 
-    // Filter students based on search term
-    const filtered = students.filter(student => 
-      student.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      student.rollNo.toLowerCase().includes(searchTerm.toLowerCase())
+        if (eventsRes.success && eventsRes.data) {
+            setEvents(eventsRes.data as unknown as Event[]);
+        }
+
+        setIsLoading(false);
+    };
+
+    const handleDelete = async (id: string) => {
+        if (!confirm('Are you sure you want to delete this student?')) return;
+
+        const result = await deleteStudent(id);
+        if (result.success) {
+            toast({ title: 'Student Deleted', description: 'Student has been deleted successfully' });
+            fetchData();
+        } else {
+            toast({ variant: 'destructive', title: 'Error', description: result.error });
+        }
+    };
+
+    const handleFileUpload = async (file: File) => {
+        if (!file) return;
+
+        setIsUploading(true);
+
+        Papa.parse(file, {
+            header: true,
+            complete: async (results) => {
+                const studentsData = results.data
+                    .filter((row: any) => row.name && row.rollNo && row.email && row.class)
+                    .map((row: any) => ({
+                        name: row.name,
+                        rollNo: row.rollNo,
+                        email: row.email,
+                        class: row.class,
+                    }));
+
+                if (studentsData.length === 0) {
+                    toast({ variant: 'destructive', title: 'Error', description: 'No valid student data found in CSV' });
+                    setIsUploading(false);
+                    return;
+                }
+
+                const result = await uploadStudentsCsv(studentsData);
+                if (result.success) {
+                    toast({
+                        title: 'Students Uploaded',
+                        description: `Successfully uploaded ${result.count} students`,
+                    });
+                    fetchData();
+                    setUploadDialogOpen(false);
+                } else {
+                    toast({ variant: 'destructive', title: 'Error', description: result.error });
+                }
+                setIsUploading(false);
+            },
+            error: () => {
+                toast({ variant: 'destructive', title: 'Error', description: 'Failed to parse CSV file' });
+                setIsUploading(false);
+            },
+        });
+    };
+
+    const filteredStudents = students.filter(
+        (student) =>
+            student.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            student.rollNo.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            student.email.toLowerCase().includes(searchQuery.toLowerCase())
     );
 
-    // Apply natural sort on roll number
-    return filtered.sort((a, b) => naturalSort(a.rollNo, b.rollNo));
-
-  }, [students, searchTerm]);
-
-  const handleSaveStudent = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!firestore) return;
-
-    const form = e.target as HTMLFormElement;
-    const formData = new FormData(form);
-    const name = formData.get('name') as string;
-    const rollNo = formData.get('rollNo') as string;
-    const email = formData.get('email') as string;
-    const studentClass = formData.get('class') as string;
-
-    const studentData: Omit<Student, 'id'> = {
-      name,
-      rollNo,
-      email,
-      class: studentClass,
+    const getInitials = (name: string) => {
+        return name
+            .split(' ')
+            .map((n) => n[0])
+            .join('')
+            .toUpperCase()
+            .slice(0, 2);
     };
-    
-    addDocumentNonBlocking(collection(firestore, `classes/${classId}/students`), studentData);
-    toast({ title: 'Student Added' });
 
-    setAddStudentOpen(false);
-  }
-
-  const handleDownloadTemplate = () => {
-    const csvContent = "rollNo,name,email,class\nA-01,John Doe,john.doe@example.com,SE-A\nA-02,Jane Smith,jane.smith@example.com,SE-A";
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement("a");
-    if (link.download !== undefined) {
-      const url = URL.createObjectURL(blob);
-      link.setAttribute("href", url);
-      link.setAttribute("download", "students-template.csv");
-      link.style.visibility = 'hidden';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
+    if (isLoading) {
+        return <PageLoader message="Loading students..." />;
     }
-  }
 
-  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file || !firestore) return;
-    
-    setIsUploading(true);
-
-    Papa.parse<Omit<Student, 'id'>>(file, {
-      header: true,
-      skipEmptyLines: true,
-      complete: async (results) => {
-        const existingRollNos = new Set(students?.map(s => s.rollNo));
-        const newStudents = results.data.filter(s => {
-          const rollNo = s.rollNo?.trim();
-          if (!rollNo) return false;
-          if (existingRollNos.has(rollNo)) return false;
-          existingRollNos.add(rollNo); // Add to set to handle duplicates within the CSV itself
-          return true;
-        });
-
-        const duplicatesCount = results.data.length - newStudents.length;
-
-        if (newStudents.length > 0) {
-            try {
-                const batch = writeBatch(firestore);
-                const studentsRef = collection(firestore, `classes/${classId}/students`);
-                
-                newStudents.forEach(student => {
-                    const docRef = doc(studentsRef);
-                    batch.set(docRef, student);
-                });
-
-                await batch.commit();
-
-                 toast({
-                    title: 'Upload Successful',
-                    description: `${newStudents.length} students were added. ${duplicatesCount} duplicate(s) were skipped.`,
-                });
-            } catch(e) {
-                 toast({
-                    variant: 'destructive',
-                    title: 'Upload Failed',
-                    description: 'There was an error saving the student data.',
-                });
-                console.error(e)
-            }
-        } else {
-             toast({
-                title: 'No New Students Added',
-                description: 'All students in the file were duplicates or the file was empty.',
-            });
-        }
-        
-        setIsUploading(false);
-        setUploadCsvOpen(false);
-      },
-      error: (error) => {
-        console.error('CSV Parsing Error:', error);
-        toast({
-            variant: 'destructive',
-            title: 'Upload Failed',
-            description: 'Could not parse the CSV file. Please check its format.',
-        });
-        setIsUploading(false);
-      }
-    });
-  }
-
-  const openDeleteDialog = (student: Student) => {
-    setStudentToDelete(student);
-    setDeleteDialogOpen(true);
-  };
-
-  const handleDeleteStudent = () => {
-    if (!firestore || !studentToDelete) return;
-    const studentRef = doc(firestore, `classes/${classId}/students`, studentToDelete.id);
-    deleteDocumentNonBlocking(studentRef);
-    toast({ title: 'Student Deleted', description: `${studentToDelete.name} has been removed.` });
-    setDeleteDialogOpen(false);
-    setStudentToDelete(null);
-    setDeleteConfirmation('');
-  };
-
-
-  return (
-    <>
-    <Card>
-      <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex-1">
-          <CardTitle>Students</CardTitle>
-          <CardDescription>
-            Manage student information and track their participation.
-          </CardDescription>
-        </div>
-        <div className="flex flex-col sm:flex-row items-center gap-2 w-full sm:w-auto">
-          <Input 
-            placeholder="Search by name or roll no..." 
-            className="w-full sm:w-64"
-            value={searchTerm}
-            onChange={e => setSearchTerm(e.target.value)}
-             />
-          <Dialog open={addStudentOpen} onOpenChange={setAddStudentOpen}>
-            <DialogTrigger asChild>
-                <Button className="w-full sm:w-auto">
-                    <PlusCircle className="mr-2 h-4 w-4" />
-                    Add Student
-                </Button>
-            </DialogTrigger>
-            <DialogContent>
-                <form onSubmit={handleSaveStudent}>
-                    <DialogHeader>
-                        <DialogTitle>Add New Student</DialogTitle>
-                        <DialogDescription>
-                            Fill in the details below to add a new student.
-                        </DialogDescription>
-                    </DialogHeader>
-                    <div className="grid gap-4 py-4">
-                        <div className="grid grid-cols-4 items-center gap-4">
-                            <Label htmlFor="rollNo" className="text-right">
-                                Roll No.
-                            </Label>
-                            <Input id="rollNo" name="rollNo" placeholder="e.g., A-15" className="col-span-3" required />
-                        </div>
-                        <div className="grid grid-cols-4 items-center gap-4">
-                            <Label htmlFor="name" className="text-right">
-                                Name
-                            </Label>
-                            <Input id="name" name="name" placeholder="e.g., John Doe" className="col-span-3" required />
-                        </div>
-                        <div className="grid grid-cols-4 items-center gap-4">
-                            <Label htmlFor="email" className="text-right">
-                                Email
-                            </Label>
-                            <Input id="email" name="email" type="email" placeholder="e.g., john@example.com" className="col-span-3" required />
-                        </div>
-                        <div className="grid grid-cols-4 items-center gap-4">
-                            <Label htmlFor="class" className="text-right">
-                                Class
-                            </Label>
-                            <Input id="class" name="class" placeholder="e.g., SE-A" className="col-span-3" required />
-                        </div>
-                    </div>
-                    <DialogFooter>
-                        <DialogClose asChild>
-                            <Button type="button" variant="secondary">
-                                Cancel
-                            </Button>
-                        </DialogClose>
-                        <Button type="submit">
-                            Save Student
-                        </Button>
-                    </DialogFooter>
-                </form>
-            </DialogContent>
-          </Dialog>
-
-          <Dialog open={uploadCsvOpen} onOpenChange={setUploadCsvOpen}>
-            <DialogTrigger asChild>
-                <Button variant="outline" className="w-full sm:w-auto">
-                    <Upload className="mr-2 h-4 w-4" /> 
-                    <span className="whitespace-nowrap">Upload CSV</span>
-                </Button>
-            </DialogTrigger>
-            <DialogContent>
-                <DialogHeader>
-                    <DialogTitle>Upload Students via CSV</DialogTitle>
-                    <DialogDescription>
-                        Upload a CSV file to add multiple students at once. Duplicates will be skipped based on Roll No.
-                    </DialogDescription>
-                </DialogHeader>
-                <div className="space-y-4 py-4">
-                    <div className="rounded-lg border bg-muted/50 p-4 space-y-2 text-sm">
-                        <h4 className="font-semibold flex items-center gap-2"><FileQuestion className="h-4 w-4"/>File Format</h4>
-                        <p>Your CSV file must contain the headers: <code className="font-mono bg-muted px-1 py-0.5 rounded">rollNo</code>, <code className="font-mono bg-muted px-1 py-0.5 rounded">name</code>, <code className="font-mono bg-muted px-1 py-0.5 rounded">email</code>, and <code className="font-mono bg-muted px-1 py-0.5 rounded">class</code>.</p>
-                        <Button variant="link" size="sm" className="p-0 h-auto" onClick={handleDownloadTemplate}>
-                            <Download className="mr-2 h-3 w-3" />
-                            Download template file
-                        </Button>
-                    </div>
-                     <div className="grid w-full items-center gap-1.5">
-                        <Label htmlFor="csv-file">CSV File</Label>
-                        <Input id="csv-file" type="file" accept=".csv" ref={fileInputRef} onChange={handleFileUpload} disabled={isUploading} />
-                    </div>
+    return (
+        <div className="space-y-6 animate-fade-in">
+            {/* Header */}
+            <div className="flex items-center justify-between">
+                <div>
+                    <h2 className="text-3xl font-bold tracking-tight">Students</h2>
+                    <p className="text-muted-foreground mt-2">
+                        Manage student records and payment history
+                    </p>
                 </div>
-                <DialogFooter>
-                    <DialogClose asChild>
-                        <Button variant="secondary" disabled={isUploading}>Cancel</Button>
-                    </DialogClose>
-                     <Button disabled={true} className="hidden">
-                        {isUploading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                        Upload and Process
-                    </Button>
-                </DialogFooter>
-            </DialogContent>
-          </Dialog>
 
-        </div>
-      </CardHeader>
-      <CardContent>
-        {isLoading ? <div className="flex justify-center items-center py-12"><Loader text="Loading students..." /></div> : (
-            <>
-            {/* Mobile View */}
-            <div className="grid gap-4 md:hidden">
-              {filteredStudents?.map((student) => (
-                <Card key={student.id}>
-                   <CardHeader>
-                     <div className="flex justify-between items-start">
-                      <div>
-                        <CardTitle className="text-lg">{student.name}</CardTitle>
-                        <CardDescription>{student.rollNo} • {student.class}</CardDescription>
-                      </div>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button aria-haspopup="true" size="icon" variant="ghost">
-                            <MoreHorizontal className="h-4 w-4" />
-                            <span className="sr-only">Toggle menu</span>
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                          <DropdownMenuItem disabled>Edit</DropdownMenuItem>
-                          <DropdownMenuItem asChild>
-                            <Link href={`/dashboard/students/${student.id}/payments`}>
-                                <Eye className="mr-2 h-4 w-4" />
-                                View Payments
-                            </Link>
-                          </DropdownMenuItem>
-                          <DropdownMenuItem className="text-destructive" onClick={() => openDeleteDialog(student)}>
-                            <Trash2 className="mr-2 h-4 w-4" />
-                            Delete
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </div>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-sm text-muted-foreground">{student.email}</div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
+                <div className="flex gap-2">
+                    <AddStudentDialog onSuccess={fetchData} />
 
-            {/* Desktop View */}
-            <div className="hidden md:block">
-                <Table>
-                <TableHeader>
-                    <TableRow>
-                    <TableHead>Roll No.</TableHead>
-                    <TableHead>Name</TableHead>
-                    <TableHead>Email</TableHead>
-                    <TableHead>Class</TableHead>
-                    <TableHead>
-                        <span className="sr-only">Actions</span>
-                    </TableHead>
-                    </TableRow>
-                </TableHeader>
-                <TableBody>
-                    {filteredStudents?.map((student) => (
-                    <TableRow key={student.id}>
-                        <TableCell className="font-mono font-medium font-code">{student.rollNo}</TableCell>
-                        <TableCell className="font-medium">{student.name}</TableCell>
-                        <TableCell>{student.email}</TableCell>
-                        <TableCell>{student.class}</TableCell>
-                        <TableCell className="text-right">
-                        <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                            <Button aria-haspopup="true" size="icon" variant="ghost">
-                                <MoreHorizontal className="h-4 w-4" />
-                                <span className="sr-only">Toggle menu</span>
+                    <Dialog open={uploadDialogOpen} onOpenChange={setUploadDialogOpen}>
+                        <DialogTrigger asChild>
+                            <Button variant="outline" className="gap-2 bg-white/5 border-white/10 hover:bg-white/10 hover:border-emerald-500/50">
+                                <Upload className="h-4 w-4" />
+                                Upload CSV
                             </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                            <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                            <DropdownMenuItem disabled>Edit</DropdownMenuItem>
-                            <DropdownMenuItem asChild>
-                                <Link href={`/dashboard/students/${student.id}/payments`}>
-                                    <Eye className="mr-2 h-4 w-4" />
-                                    View Payments
-                                </Link>
-                            </DropdownMenuItem>
-                            <DropdownMenuItem className="text-destructive" onClick={() => openDeleteDialog(student)}>
-                                <Trash2 className="mr-2 h-4 w-4" />
-                                Delete
-                            </DropdownMenuItem>
-                            </DropdownMenuContent>
-                        </DropdownMenu>
-                        </TableCell>
-                    </TableRow>
-                    ))}
-                </TableBody>
-                </Table>
+                        </DialogTrigger>
+                        <DialogContent className="max-w-2xl bg-black/95 border-white/10 backdrop-blur-xl">
+                            <DialogHeader>
+                                <DialogTitle className="text-white">Import Students from CSV</DialogTitle>
+                                <DialogDescription className="text-stone-400">
+                                    Upload a CSV file to bulk import student records
+                                </DialogDescription>
+                            </DialogHeader>
+                            <CSVDropzone
+                                onFileSelect={handleFileUpload}
+                                isUploading={isUploading}
+                            />
+                        </DialogContent>
+                    </Dialog>
+                </div>
             </div>
-            
-            {filteredStudents?.length === 0 && !isLoading && (
-                <div className="text-center py-12 text-muted-foreground">
-                    No students found.
+
+            {/* Search Bar */}
+            <GlassCard className="p-4">
+                <div className="relative">
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                        placeholder="Search by name, roll number, or email..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="pl-10"
+                    />
+                </div>
+            </GlassCard>
+
+            {/* Students Grid */}
+            {isLoading ? (
+                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                    {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
+                        <Card key={i} className="skeleton h-48" />
+                    ))}
+                </div>
+            ) : filteredStudents.length === 0 ? (
+                <Card className="py-12">
+                    <CardContent className="text-center">
+                        <User className="h-12 w-12 mx-auto mb-4 opacity-20" />
+                        <p className="text-lg font-medium">
+                            {searchQuery ? 'No students found' : 'No Students Yet'}
+                        </p>
+                        <p className="text-sm text-muted-foreground mt-1">
+                            {searchQuery
+                                ? 'Try adjusting your search query'
+                                : 'Upload a CSV file to add students'}
+                        </p>
+                    </CardContent>
+                </Card>
+            ) : (
+                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                    {filteredStudents.map((student) => (
+                        <GlassCard key={student.id} className="group hover-lift relative overflow-hidden">
+                            <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-br from-primary/10 to-transparent rounded-full -mr-12 -mt-12" />
+
+                            <CardHeader className="pb-3">
+                                <div className="flex items-start justify-between">
+                                    <div className="flex items-center gap-3">
+                                        <Avatar className="h-12 w-12 border-2 border-primary/20">
+                                            <AvatarFallback className="bg-gradient-primary text-white">
+                                                {getInitials(student.name)}
+                                            </AvatarFallback>
+                                        </Avatar>
+                                        <div>
+                                            <CardTitle className="text-base">{student.name}</CardTitle>
+                                            <CardDescription className="text-xs">{student.rollNo}</CardDescription>
+                                        </div>
+                                    </div>
+
+                                    <DropdownMenu>
+                                        <DropdownMenuTrigger asChild>
+                                            <Button variant="ghost" size="icon" className="h-8 w-8">
+                                                <MoreVertical className="h-4 w-4" />
+                                            </Button>
+                                        </DropdownMenuTrigger>
+                                        <DropdownMenuContent align="end">
+                                            <DropdownMenuItem asChild>
+                                                <Link href={`/dashboard/students/${student.id}/payments`}>
+                                                    <Eye className="mr-2 h-4 w-4" />
+                                                    View Payments
+                                                </Link>
+                                            </DropdownMenuItem>
+                                            <DropdownMenuItem
+                                                onClick={() => handleDelete(student.id)}
+                                                className="text-destructive"
+                                            >
+                                                <Trash2 className="mr-2 h-4 w-4" />
+                                                Delete
+                                            </DropdownMenuItem>
+                                        </DropdownMenuContent>
+                                    </DropdownMenu>
+                                </div>
+                            </CardHeader>
+
+                            <CardContent className="space-y-2">
+                                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                    <Mail className="h-3.5 w-3.5" />
+                                    <span className="truncate">{student.email}</span>
+                                </div>
+                                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                    <GraduationCap className="h-3.5 w-3.5" />
+                                    <span>{student.class}</span>
+                                </div>
+                            </CardContent>
+
+                            <div className="px-6 pb-4">
+                                <Button asChild variant="outline" size="sm" className="w-full">
+                                    <Link href={`/dashboard/students/${student.id}/payments`}>
+                                        View Payment History
+                                    </Link>
+                                </Button>
+                            </div>
+                        </GlassCard>
+                    ))}
                 </div>
             )}
-            </>
-        )}
-      </CardContent>
-    </Card>
 
-    <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
-          <AlertDialogDescription>
-            This action cannot be undone. This will permanently delete the
-            student <span className="font-semibold text-foreground">{studentToDelete?.name}</span> and all associated data.
-            To confirm, please type <strong className="text-foreground">delete</strong> below.
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <Input
-          value={deleteConfirmation}
-          onChange={(e) => setDeleteConfirmation(e.target.value)}
-          placeholder="delete"
-          className="my-2"
-        />
-        <AlertDialogFooter>
-          <AlertDialogCancel onClick={() => setDeleteConfirmation('')}>Cancel</AlertDialogCancel>
-          <AlertDialogAction
-            onClick={handleDeleteStudent}
-            disabled={deleteConfirmation !== 'delete'}
-            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-          >
-            Delete Student
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
-    </>
-  );
+            {/* Stats Footer */}
+            {!isLoading && students.length > 0 && (
+                <div className="flex items-center justify-between text-sm text-muted-foreground">
+                    <p>
+                        Showing {filteredStudents.length} of {students.length} students
+                    </p>
+                </div>
+            )}
+        </div>
+    );
 }
