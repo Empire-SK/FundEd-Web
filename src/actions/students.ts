@@ -73,3 +73,64 @@ export async function getStudents() {
     return { success: false, error: 'Failed to fetch students' };
   }
 }
+
+export async function deleteStudent(id: string) {
+  try {
+    await prisma.student.delete({
+      where: { id },
+    });
+
+    revalidatePath('/dashboard');
+    revalidatePath('/dashboard/students');
+    
+    return { success: true };
+  } catch (error) {
+    console.error('Error deleting student:', error);
+    return { success: false, error: 'Failed to delete student' };
+  }
+}
+
+export async function uploadStudentsCsv(studentsData: any[]) {
+  try {
+    let successCount = 0;
+    let failCount = 0;
+
+    for (const student of studentsData) {
+      try {
+        // Check for duplicate roll number
+        const existing = await prisma.student.findFirst({
+          where: { rollNo: student.rollNo }
+        });
+
+        if (!existing) {
+          await prisma.student.create({
+            data: {
+              name: student.name,
+              rollNo: student.rollNo,
+              email: student.email || '',
+              class: student.class || '',
+            }
+          });
+          successCount++;
+        } else {
+            failCount++;
+        }
+      } catch (e) {
+        console.error(`Failed to upload student ${student.rollNo}:`, e);
+        failCount++;
+      }
+    }
+
+    revalidatePath('/dashboard');
+    revalidatePath('/dashboard/students');
+
+    return { 
+      success: true, 
+      count: successCount,
+      failed: failCount
+    };
+  } catch (error) {
+    console.error('Error uploading CSV:', error);
+    return { success: false, error: 'Failed to process CSV upload' };
+  }
+}
