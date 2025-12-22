@@ -11,7 +11,13 @@ export async function getEvents() {
           createdAt: 'desc',
         },
         include: {
-          payments: true,
+          payments: {
+            select: {
+              amount: true,
+              status: true,
+              studentId: true, // Needed for distinct count if strict
+            }
+          },
           _count: {
             select: { participants: true }
           },
@@ -43,6 +49,8 @@ export async function getEvents() {
         totalCollected,
         totalPending,
         participantCount,
+        paidCount: event.payments.filter(p => p.status === 'Paid').length,
+        pendingCount: Math.max(0, participantCount - event.payments.filter(p => p.status === 'Paid').length),
         deadline: event.deadline.toISOString(),
         createdAt: event.createdAt.toISOString(),
         updatedAt: event.updatedAt.toISOString(),
@@ -78,6 +86,7 @@ export async function createEvent(data: {
         paymentOptions: JSON.stringify(data.paymentOptions),
         qrCodeUrl: data.qrCodeUrl,
         category: data.category,
+        status: 'PUBLISHED',
         participants: {
              connect: data.selectedStudents.map(id => ({ id }))
         }
@@ -88,6 +97,60 @@ export async function createEvent(data: {
   } catch (error) {
     console.error('Error creating event:', error);
     return { success: false, error: 'Failed to create event' };
+  }
+}
+
+export async function saveDraft(data: {
+  id?: string;
+  name?: string;
+  description?: string;
+  cost?: number;
+  deadline?: string;
+  paymentOptions?: string[];
+  qrCodeUrl?: string;
+  category?: string;
+  selectedStudents?: string[];
+}) {
+  try {
+    const eventData: any = {
+      status: 'DRAFT',
+    };
+
+    if (data.name) eventData.name = data.name;
+    if (data.description) eventData.description = data.description;
+    if (data.cost !== undefined) eventData.cost = data.cost;
+    if (data.deadline) eventData.deadline = new Date(data.deadline);
+    if (data.paymentOptions) eventData.paymentOptions = JSON.stringify(data.paymentOptions);
+    if (data.qrCodeUrl !== undefined) eventData.qrCodeUrl = data.qrCodeUrl;
+    if (data.category) eventData.category = data.category;
+    
+    let event;
+    if (data.id) {
+      if (data.selectedStudents) {
+        eventData.participants = {
+          set: data.selectedStudents.map(id => ({ id }))
+        };
+      }
+      event = await prisma.event.update({
+        where: { id: data.id },
+        data: eventData,
+      });
+    } else {
+      if (data.selectedStudents) {
+        eventData.participants = {
+          connect: data.selectedStudents.map(id => ({ id }))
+        };
+      }
+      event = await prisma.event.create({
+        data: eventData,
+      });
+    }
+
+    revalidatePath('/dashboard/events');
+    return { success: true, data: event };
+  } catch (error) {
+    console.error('Error saving draft:', error);
+    return { success: false, error: `Failed to save draft: ${error instanceof Error ? error.message : String(error)}` };
   }
 }
 
@@ -112,6 +175,7 @@ export async function updateEvent(id: string, data: {
         paymentOptions: JSON.stringify(data.paymentOptions),
         qrCodeUrl: data.qrCodeUrl,
         category: data.category,
+        status: 'PUBLISHED', // Explicitly publish when fully updated
         participants: {
              set: data.selectedStudents.map(id => ({ id }))
         }
@@ -127,14 +191,30 @@ export async function updateEvent(id: string, data: {
 
 export async function deleteEvent(id: string) {
   try {
-    await prisma.event.delete({
-      where: { id },
+    // We use a transaction to ensure all related records are deleted
+    // This is a safety measure in case cascade delete is not working or there are other constraints
+    await prisma.$transaction(async (tx) => {
+      // 1. Delete payments
+      await tx.payment.deleteMany({
+        where: { eventId: id }
+      });
+
+      // 2. Delete print distributions
+      await tx.printDistribution.deleteMany({
+        where: { eventId: id }
+      });
+
+      // 3. Delete the event (implicit M-N will be handled by Prisma)
+      await tx.event.delete({
+        where: { id },
+      });
     });
+
     revalidatePath('/dashboard/events');
     return { success: true };
   } catch (error) {
     console.error('Error deleting event:', error);
-    return { success: false, error: 'Failed to delete event' };
+    return { success: false, error: 'Failed to delete event. Please check if there are unrelated records linked.' };
   }
 }
 

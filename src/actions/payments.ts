@@ -8,11 +8,29 @@ export async function getEventPayments(eventId: string) {
     const [event, transactions] = await Promise.all([
       prisma.event.findUnique({ 
         where: { id: eventId },
-        include: { participants: true }
+        include: { 
+          participants: {
+            select: {
+              id: true,
+              name: true,
+              rollNo: true,
+              class: true, // Needed for Top Class stats
+            }
+          } 
+        }
       }),
       prisma.payment.findMany({
         where: { eventId },
-        include: { student: true },
+        include: { 
+          student: {
+            select: {
+              id: true,
+              name: true,
+              rollNo: true,
+              class: true, // Typically needed for consistent student records
+            }
+          } 
+        },
         orderBy: { paymentDate: 'desc' }
       }),
     ]);
@@ -72,18 +90,24 @@ export async function getEventPayments(eventId: string) {
     }, []);
 
     // Combine and sort
-    // We might want pending items at the top or bottom? 
-    // Usually pending items are "To Do", so maybe top? 
-    // Or just mix them by date. Since virtual date is "now", they will appear at top if sorted desc.
     const allTransactions = [...virtualTransactions, ...realTransactions].sort((a, b) => {
       return new Date(b.paymentDate).getTime() - new Date(a.paymentDate).getTime();
     });
+
+    const totalStudents = studentsToCheck.length;
+    const pendingCount = virtualTransactions.length;
+    const paidCount = totalStudents - pendingCount;
 
     return { 
       success: true, 
       data: {
         event: { ...event, deadline: event.deadline.toISOString(), createdAt: event.createdAt.toISOString(), updatedAt: event.updatedAt.toISOString(), paymentOptions: JSON.parse(event.paymentOptions) },
-        transactions: allTransactions
+        transactions: allTransactions,
+        stats: {
+          totalStudents,
+          pendingCount,
+          paidCount
+        }
       }
     };
   } catch (error) {

@@ -158,20 +158,20 @@ export default function StudentsPage() {
     return (
         <div className="space-y-6 animate-fade-in">
             {/* Header */}
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
                 <div>
-                    <h2 className="text-3xl font-bold tracking-tight">Students</h2>
-                    <p className="text-muted-foreground mt-2">
+                    <h2 className="text-2xl md:text-3xl font-bold tracking-tight">Students</h2>
+                    <p className="text-muted-foreground mt-1 md:mt-2 text-sm md:text-base">
                         Manage student records and payment history
                     </p>
                 </div>
 
-                <div className="flex gap-2">
+                <div className="flex flex-col sm:flex-row gap-2 w-full md:w-auto">
                     <AddStudentDialog onSuccess={fetchData} />
 
                     <Dialog open={uploadDialogOpen} onOpenChange={setUploadDialogOpen}>
                         <DialogTrigger asChild>
-                            <Button variant="outline" className="gap-2 bg-white/5 border-white/10 hover:bg-white/10 hover:border-emerald-500/50">
+                            <Button variant="outline" className="gap-2 bg-white/5 border-white/10 hover:bg-white/10 hover:border-emerald-500/50 w-full sm:w-auto">
                                 <Upload className="h-4 w-4" />
                                 Upload CSV
                             </Button>

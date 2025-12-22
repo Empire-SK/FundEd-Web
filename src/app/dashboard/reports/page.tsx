@@ -490,7 +490,7 @@ export default function ReportsPage() {
                             </CardDescription>
                         </CardHeader>
                         <CardContent>
-                            <div className="hidden md:block overflow-x-auto">
+                            <div className="overflow-x-auto">
                                 <Table>
                                     <TableHeader>
                                         <TableRow>

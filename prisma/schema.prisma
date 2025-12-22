@@ -44,13 +44,14 @@ model Student {
 
 model Event {
   id             String   @id @default(cuid())
-  name           String
-  description    String
-  deadline       DateTime
-  cost           Float
-  paymentOptions String   // Stored as JSON string: ["Razorpay", "QR", "Cash"]
+  name           String   @default("New Event")
+  description    String   @default("")
+  deadline       DateTime @default(now())
+  cost           Float    @default(0)
+  paymentOptions String   @default("[\"Razorpay\"]") // Stored as JSON string
   qrCodeUrl      String?
-  category       String   // 'Normal' | 'Print'
+  category       String   @default("Normal") // 'Normal' | 'Print'
+  status         String   @default("PUBLISHED") // 'DRAFT' | 'PUBLISHED'
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 

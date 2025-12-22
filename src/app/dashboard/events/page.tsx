@@ -49,12 +49,23 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
-import { getEvents, createEvent, updateEvent, deleteEvent } from '@/actions/events';
+import { getEvents, createEvent, updateEvent, deleteEvent, saveDraft } from '@/actions/events';
 import { getStudents } from '@/actions/students';
 import type { Event, Student } from '@/lib/types';
 import { format } from 'date-fns';
 import { GlassCard } from '@/components/ui/glass-card';
 import { PageLoader } from '@/components/ui/page-loader';
+import { useDebounce } from '@/hooks/use-debounce';
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 export default function EventsPage() {
     const [events, setEvents] = useState<Event[]>([]);
@@ -68,12 +79,56 @@ export default function EventsPage() {
     const [name, setName] = useState('');
     const [description, setDescription] = useState('');
     const [cost, setCost] = useState('');
-    const [deadline, setDeadline] = useState<Date>();
+    const [deadline, setDeadline] = useState<Date | undefined>(new Date());
     const [category, setCategory] = useState<'Normal' | 'Print'>('Normal');
     const [paymentOptions, setPaymentOptions] = useState<string[]>(['Razorpay']);
     const [selectedStudents, setSelectedStudents] = useState<string[]>([]);
     const [searchQuery, setSearchQuery] = useState('');
     const [isSelectionDialogOpen, setIsSelectionDialogOpen] = useState(false);
+    const [savingStatus, setSavingStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+
+    // Debounced values for autosave
+    const debouncedName = useDebounce(name, 1000);
+    const debouncedDescription = useDebounce(description, 1000);
+    const debouncedCost = useDebounce(cost, 1000);
+
+    // Autosave Effect
+    useEffect(() => {
+        // Skip initial load or reset
+        if (!isDialogOpen) return;
+
+        const saveData = async () => {
+            setSavingStatus('saving');
+            // Ensure cost is number
+            const numCost = parseFloat(cost);
+            // Don't save if cost is invalid (unless it's empty, but cost=0 default)
+
+            const res = await saveDraft({
+                id: editingEvent?.id,
+                name,
+                description,
+                cost: parseFloat(cost) || 0,
+                deadline: deadline?.toISOString(),
+                category,
+                paymentOptions,
+                selectedStudents
+            });
+
+            if (res.success && res.data) {
+                setSavingStatus('saved');
+                if (!editingEvent?.id) {
+                    setEditingEvent(res.data as unknown as Event);
+                }
+            } else {
+                setSavingStatus('error');
+            }
+        };
+
+        if (name || description || cost) {
+            saveData();
+        }
+
+    }, [debouncedName, debouncedDescription, debouncedCost, category, paymentOptions, selectedStudents, deadline]);
 
     const filteredStudents = students.filter(student =>
         student.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -85,8 +140,8 @@ export default function EventsPage() {
         fetchData();
     }, []);
 
-    const fetchData = async () => {
-        setIsLoading(true);
+    const fetchData = async (isBackground = false) => {
+        if (!isBackground) setIsLoading(true);
         const [eventsRes, studentsRes] = await Promise.all([
             getEvents(),
             getStudents()
@@ -111,6 +166,7 @@ export default function EventsPage() {
             return;
         }
 
+        // Final publish
         const eventData = {
             name,
             description,
@@ -121,31 +177,70 @@ export default function EventsPage() {
             selectedStudents,
         };
 
-        const result = editingEvent
-            ? await updateEvent(editingEvent.id, eventData)
-            : await createEvent(eventData);
+        // Optimistic UI update helpers
+        const optimisticEventBase = {
+            name,
+            description,
+            cost: parseFloat(cost),
+            deadline: deadline.toISOString(),
+            category,
+            paymentOptions,
+            participantIds: selectedStudents,
+            // Preserve or init stats
+            status: 'PUBLISHED',
+            participantCount: selectedStudents.length,
+            updatedAt: new Date().toISOString(),
+        };
+
+        // We use updateEvent to set status to PUBLISHED 
+        let result;
+        if (editingEvent?.id) {
+            // Optimistic Update
+            setEvents(events.map(e => e.id === editingEvent.id ? { ...e, ...optimisticEventBase } as Event : e));
+            setIsDialogOpen(false); // Close immediately
+
+            result = await updateEvent(editingEvent.id, eventData);
+        } else {
+            // Optimistic Create (Harder without ID, so we skip optimistic append and just rely on background fetch, but close dialog)
+            setIsDialogOpen(false); // Close immediately
+            result = await createEvent(eventData);
+        }
 
         if (result.success) {
             toast({
-                title: editingEvent ? 'Event Updated' : 'Event Created',
-                description: `${name} has been ${editingEvent ? 'updated' : 'created'} successfully`,
+                title: 'Event Published',
+                description: `${name} has been published successfully`,
             });
-            setIsDialogOpen(false);
             resetForm();
-            fetchData();
+            fetchData(true); // Background refresh
         } else {
             toast({ variant: 'destructive', title: 'Error', description: result.error });
+            // Ideally revert optimistic update here if needed, but for now simple error toast
+            if (editingEvent?.id) fetchData(true); // Revert to server state
         }
     };
+    const [deleteId, setDeleteId] = useState<string | null>(null);
 
-    const handleDelete = async (id: string) => {
-        if (!confirm('Are you sure you want to delete this event?')) return;
+    const handleDelete = (id: string) => {
+        setDeleteId(id);
+    };
 
-        const result = await deleteEvent(id);
+    const confirmDelete = async () => {
+        if (!deleteId) return;
+
+        // Optimistic update
+        const previousEvents = [...events];
+        setEvents(events.filter(e => e.id !== deleteId));
+        setDeleteId(null); // Close dialog immediately
+
+        const result = await deleteEvent(deleteId);
+
         if (result.success) {
             toast({ title: 'Event Deleted', description: 'Event has been deleted successfully' });
-            fetchData();
+            // No need to fetchData(), local state is already updated
         } else {
+            // Revert on failure
+            setEvents(previousEvents);
             toast({ variant: 'destructive', title: 'Error', description: result.error });
         }
     };
@@ -156,10 +251,11 @@ export default function EventsPage() {
         setDescription(event.description);
         setCost(event.cost.toString());
         setDeadline(new Date(event.deadline));
-        setCategory(event.category);
+        setCategory(event.category as 'Normal' | 'Print');
         setPaymentOptions(event.paymentOptions);
         setSelectedStudents(event.participantIds || []);
         setIsDialogOpen(true);
+        setSavingStatus('saved');
     };
 
     const resetForm = () => {
@@ -167,11 +263,12 @@ export default function EventsPage() {
         setName('');
         setDescription('');
         setCost('');
-        setDeadline(undefined);
+        setDeadline(new Date());
         setCategory('Normal');
         setPaymentOptions(['Razorpay']);
-        setSelectedStudents(students.map(s => s.id)); // Default to all
+        setSelectedStudents(students.map(s => s.id));
         setSearchQuery('');
+        setSavingStatus('idle');
     };
 
     const copyPaymentLink = (eventId: string) => {
@@ -180,16 +277,15 @@ export default function EventsPage() {
         toast({ title: 'Link Copied', description: 'Payment link copied to clipboard' });
     };
 
+    // Helper to check if event has payments to calculate progress
     const getCollectionProgress = (event: Event) => {
         if (students.length === 0) return 0;
 
-        // Count unique students who have paid for this event
         const paidStudentsCount = event.payments
             ? new Set(event.payments.filter(p => p.status === 'Paid').map(p => p.studentId)).size
             : 0;
 
-        // Calculate percentage: (paid students / total participants) * 100
-        const totalParticipants = event.participantCount || students.length; // Fallback for safety
+        const totalParticipants = event.participantCount || students.length;
         if (totalParticipants === 0) return 0;
         return (paidStudentsCount / totalParticipants) * 100;
     };
@@ -198,22 +294,28 @@ export default function EventsPage() {
         return <PageLoader message="Loading events..." />;
     }
 
+
+
     return (
         <div className="space-y-6 animate-fade-in">
             {/* Header */}
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
                 <div>
-                    <h2 className="text-3xl font-bold tracking-tight">Events</h2>
-                    <p className="text-muted-foreground mt-2">
+                    <h2 className="text-2xl md:text-3xl font-bold tracking-tight">Events</h2>
+                    <p className="text-muted-foreground mt-1 md:mt-2 text-sm md:text-base">
                         Manage fund collection events and track payments
                     </p>
                 </div>
 
-
-                <div className="flex gap-2">
-                    <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+                <div className="flex gap-2 w-full md:w-auto">
+                    <Dialog open={isDialogOpen} onOpenChange={(open) => {
+                        if (!open) {
+                            fetchData(true); // Background refresh on close
+                        }
+                        setIsDialogOpen(open);
+                    }}>
                         <DialogTrigger asChild>
-                            <Button onClick={resetForm} className="gap-2 gradient-primary">
+                            <Button onClick={resetForm} className="gap-2 gradient-primary w-full md:w-auto">
                                 <Plus className="h-4 w-4" />
                                 Create Event
                             </Button>
@@ -221,7 +323,12 @@ export default function EventsPage() {
                         <DialogContent className="max-w-2xl">
                             <form onSubmit={handleSubmit}>
                                 <DialogHeader>
-                                    <DialogTitle>{editingEvent ? 'Edit Event' : 'Create New Event'}</DialogTitle>
+                                    <div className="flex items-center justify-between">
+                                        <DialogTitle>{editingEvent ? (editingEvent.status === 'DRAFT' ? 'Edit Draft' : 'Edit Event') : 'Create New Event'}</DialogTitle>
+                                        <span className="text-xs text-muted-foreground uppercase tracking-widest">
+                                            {savingStatus === 'saving' ? 'Saving...' : savingStatus === 'saved' ? 'Saved' : ''}
+                                        </span>
+                                    </div>
                                     <DialogDescription>
                                         {editingEvent ? 'Update event details' : 'Create a new fund collection event'}
                                     </DialogDescription>
@@ -300,20 +407,18 @@ export default function EventsPage() {
                                                     id="normal"
                                                     checked={category === 'Normal'}
                                                     onCheckedChange={() => setCategory('Normal')}
+                                                    className="rounded-sm"
                                                 />
-                                                <label htmlFor="normal" className="text-sm cursor-pointer">
-                                                    Normal
-                                                </label>
+                                                <label htmlFor="normal" className="text-sm cursor-pointer">Normal</label>
                                             </div>
                                             <div className="flex items-center space-x-2">
                                                 <Checkbox
                                                     id="print"
                                                     checked={category === 'Print'}
                                                     onCheckedChange={() => setCategory('Print')}
+                                                    className="rounded-sm"
                                                 />
-                                                <label htmlFor="print" className="text-sm cursor-pointer">
-                                                    Print
-                                                </label>
+                                                <label htmlFor="print" className="text-sm cursor-pointer">Print</label>
                                             </div>
                                         </div>
                                     </div>
@@ -440,13 +545,15 @@ export default function EventsPage() {
                                     </div>
                                 </div>
 
-                                <DialogFooter>
-                                    <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>
-                                        Cancel
-                                    </Button>
-                                    <Button type="submit">
-                                        {editingEvent ? 'Update Event' : 'Create Event'}
-                                    </Button>
+                                <DialogFooter className="gap-2 sm:gap-0">
+                                    <div className="flex gap-2 w-full justify-end">
+                                        <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>
+                                            Cancel
+                                        </Button>
+                                        <Button type="submit">
+                                            {editingEvent?.status === 'PUBLISHED' ? 'Update Event' : 'Publish Event'}
+                                        </Button>
+                                    </div>
                                 </DialogFooter>
                             </form>
                         </DialogContent>
@@ -480,7 +587,17 @@ export default function EventsPage() {
                             <CardHeader>
                                 <div className="flex items-start justify-between">
                                     <div className="flex-1">
-                                        <CardTitle className="text-xl">{event.name}</CardTitle>
+                                        <div className="flex items-center gap-2">
+                                            <CardTitle className="text-xl">{event.name}</CardTitle>
+                                            {event.status === 'DRAFT' && (
+                                                <Badge
+                                                    variant="secondary"
+                                                    className="bg-amber-100 text-amber-800 hover:bg-amber-100 text-xs px-2 py-0.5 h-5"
+                                                >
+                                                    Draft
+                                                </Badge>
+                                            )}
+                                        </div>
                                         <CardDescription className="mt-1">{event.description}</CardDescription>
                                     </div>
 
@@ -533,65 +650,54 @@ export default function EventsPage() {
                                 <div className="space-y-2">
                                     <div className="flex items-center justify-between text-sm">
                                         <span className="text-muted-foreground">Collection Progress</span>
-                                        <span className="font-medium">{Math.round(getCollectionProgress(event))}%</span>
+                                        <span className="font-medium">{getCollectionProgress(event).toFixed(1)}%</span>
                                     </div>
                                     <Progress value={getCollectionProgress(event)} className="h-2" />
                                 </div>
 
-                                <div className="grid grid-cols-2 gap-2 pt-2">
-                                    <div className="text-center p-3 rounded-lg bg-green-50 dark:bg-green-950/20">
-                                        <p className="text-xs text-muted-foreground">Collected</p>
-                                        <p className="text-lg font-bold text-green-600 dark:text-green-400">
-                                            ₹{(event.totalCollected || 0).toLocaleString()}
-                                        </p>
-                                        <p className="text-xs text-green-600/80">
-                                            {(() => {
-                                                const uniquePaid = event.payments
-                                                    ? new Set(event.payments.filter(p => p.status === 'Paid').map(p => p.studentId)).size
-                                                    : 0;
-                                                return `${uniquePaid} Students`;
-                                            })()}
-                                        </p>
+                                <div className="grid grid-cols-2 gap-2 text-sm pt-2">
+                                    <div className="flex flex-col">
+                                        <span className="text-muted-foreground text-xs">Collected</span>
+                                        <span className="font-medium text-emerald-600">₹{event.totalCollected?.toLocaleString() || '0'}</span>
                                     </div>
-                                    <div className="text-center p-3 rounded-lg bg-orange-50 dark:bg-orange-950/20">
-                                        <p className="text-xs text-muted-foreground">Pending</p>
-                                        <p className="text-lg font-bold text-orange-600 dark:text-orange-400">
-                                            ₹{(event.totalPending || 0).toLocaleString()}
-                                        </p>
-                                        <p className="text-xs text-orange-600/80">
-                                            {(() => {
-                                                const uniquePaid = event.payments
-                                                    ? new Set(event.payments.filter(p => p.status === 'Paid').map(p => p.studentId)).size
-                                                    : 0;
-                                                const total = event.participantCount || students.length;
-                                                return `${Math.max(0, total - uniquePaid)} Students`;
-                                            })()}
-                                        </p>
+                                    <div className="flex flex-col items-end">
+                                        <span className="text-muted-foreground text-xs">Students Paid</span>
+                                        <span className="font-medium">{event.paidCount || 0} / {event.participantCount || 0}</span>
                                     </div>
                                 </div>
-                            </CardContent>
 
-                            <CardFooter className="flex gap-2">
-                                <Button asChild variant="outline" className="flex-1" size="sm">
-                                    <Link href={`/dashboard/events/${event.id}/payments`}>
-                                        <Users className="mr-2 h-4 w-4" />
-                                        View Payments
+                                <div className="pt-2">
+                                    <Link href={`/dashboard/events/${event.id}/payments`} className="w-full block">
+                                        <Button variant="outline" className="w-full gap-2 group-hover:bg-primary group-hover:text-primary-foreground transition-colors">
+                                            <Eye className="h-4 w-4" />
+                                            View Payments
+                                        </Button>
                                     </Link>
-                                </Button>
-                                <Button
-                                    variant="default"
-                                    className="flex-1"
-                                    size="sm"
-                                    onClick={() => copyPaymentLink(event.id)}
-                                >
-                                    <LinkIcon className="mr-2 h-4 w-4" />
-                                    Share Link
-                                </Button>
-                            </CardFooter>
+                                </div>
+                            </CardContent>
                         </GlassCard>
-                    ))}
-                </div>
+                    ))
+                    }
+                </div >
             )}
-        </div>
+
+            <AlertDialog open={!!deleteId} onOpenChange={(open) => !open && setDeleteId(null)}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            This action cannot be undone. This will permanently delete the event
+                            and all associated payments and records.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction onClick={confirmDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                            Delete Event
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
+        </div >
     );
 }

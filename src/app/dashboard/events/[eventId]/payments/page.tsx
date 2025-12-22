@@ -17,8 +17,16 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Progress } from '@/components/ui/progress';
 import { ArrowLeft, Check, X, DollarSign } from 'lucide-react';
 import type { Transaction, Event, Student } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
@@ -53,6 +61,14 @@ export default function EventPaymentsPage() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [stats, setStats] = useState({ totalStudents: 0, pendingCount: 0, paidCount: 0 });
+  const [filterStatus, setFilterStatus] = useState<string>('all');
+
+  const filteredTransactions = transactions.filter(t => {
+    if (filterStatus === 'all') return true;
+    if (filterStatus === 'pending') return t.status === 'Pending' || t.status === 'Verification Pending';
+    return t.status.toLowerCase() === filterStatus.toLowerCase();
+  });
 
   const fetchPayments = async () => {
     setIsLoading(true);
@@ -60,6 +76,9 @@ export default function EventPaymentsPage() {
     if (res.success && res.data) {
       setEvent(res.data.event as unknown as Event);
       setTransactions(res.data.transactions as unknown as Transaction[]);
+      if (res.data.stats) {
+        setStats(res.data.stats);
+      }
     } else {
       toast({ variant: 'destructive', title: 'Error', description: 'Failed to fetch payments' });
     }
@@ -190,43 +209,181 @@ export default function EventPaymentsPage() {
   return (
     <div className="space-y-6 animate-fade-in">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <Button asChild variant="outline" size="icon">
+      <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+        <div className="flex items-center gap-4 w-full md:w-auto">
+          <Button asChild variant="outline" size="icon" className="shrink-0">
             <Link href="/dashboard/events">
               <ArrowLeft className="h-4 w-4" />
               <span className="sr-only">Back</span>
             </Link>
           </Button>
           <div>
-            <h2 className="text-3xl font-bold tracking-tight">Payments for {event.name}</h2>
-            <p className="text-muted-foreground mt-1">
+            <h2 className="text-2xl md:text-3xl font-bold tracking-tight">Payments for {event.name}</h2>
+            <p className="text-muted-foreground mt-1 text-sm md:text-base">
               Manage and track all transactions for this event
             </p>
           </div>
         </div>
 
-        <RecordCashPaymentDialog
-          students={students}
-          events={[event]}
-          payments={transactions}
-          preSelectedEvent={event}
-          onSuccess={fetchPayments}
-          trigger={
-            <Button className="gap-2 gradient-primary">
-              <DollarSign className="h-4 w-4" />
-              Record Cash Payment
-            </Button>
-          }
-        />
+        <div className="flex flex-col-reverse md:flex-row items-stretch md:items-center gap-3 w-full md:w-auto">
+
+
+          <Select value={filterStatus} onValueChange={setFilterStatus}>
+            <SelectTrigger className="w-full md:w-[180px]">
+              <SelectValue placeholder="Filter by status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Statuses</SelectItem>
+              <SelectItem value="Paid">Paid</SelectItem>
+              <SelectItem value="Pending">Pending</SelectItem>
+              <SelectItem value="Verification Pending">Verification Pending</SelectItem>
+              <SelectItem value="Failed">Failed</SelectItem>
+            </SelectContent>
+          </Select>
+
+          <RecordCashPaymentDialog
+            students={students}
+            events={[event]}
+            payments={transactions}
+            preSelectedEvent={event}
+            onSuccess={fetchPayments}
+            trigger={
+              <Button className="gap-2 gradient-primary w-full md:w-auto justify-center">
+                <DollarSign className="h-4 w-4" />
+                Record Cash Payment
+              </Button>
+            }
+          />
+        </div>
       </div>
+
+      {/* Stats Grid */}
+      {event && (
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          <Card className="glass-card">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Total Collection</CardTitle>
+              <DollarSign className="h-4 w-4 text-emerald-500" />
+            </CardHeader>
+            <CardContent>
+              {(() => {
+                const paidTxns = transactions.filter(t => !t.id.startsWith('pending_') && t.status === 'Paid');
+                const totalCollected = paidTxns.reduce((sum, t) => sum + t.amount, 0);
+                const totalExpected = event.cost * (event.participantCount || students.length || 0);
+
+                return (
+                  <div>
+                    <div className="text-2xl font-bold">₹{totalCollected.toLocaleString()}</div>
+                    <p className="text-xs text-muted-foreground">
+                      Target: ₹{totalExpected.toLocaleString()}
+                    </p>
+                  </div>
+                );
+              })()}
+            </CardContent>
+          </Card>
+
+          <Card className="glass-card">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Efficiency</CardTitle>
+              <ArrowLeft className="h-4 w-4 text-blue-500 rotate-45" />
+            </CardHeader>
+            <CardContent>
+              {(() => {
+                const paidTxns = transactions.filter(t => !t.id.startsWith('pending_') && t.status === 'Paid');
+                const totalCollected = paidTxns.reduce((sum, t) => sum + t.amount, 0);
+                const totalExpected = event.cost * (event.participantCount || students.length || 0);
+                const efficiency = totalExpected > 0 ? (totalCollected / totalExpected) * 100 : 0;
+
+                return (
+                  <div>
+                    <div className="text-2xl font-bold">{efficiency.toFixed(1)}%</div>
+                    <Progress value={efficiency} className="h-1 mt-2" />
+                  </div>
+                );
+              })()}
+            </CardContent>
+          </Card>
+
+          <Card className="glass-card">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Outstanding</CardTitle>
+              <div className="h-4 w-4 text-amber-500 font-bold">!</div>
+            </CardHeader>
+            <CardContent>
+              {(() => {
+                // Determine outstanding by summing pending virtual transactions
+                const pendingTxns = transactions.filter(t => t.id.startsWith('pending_'));
+                const outstanding = pendingTxns.reduce((sum, t) => sum + t.amount, 0);
+
+                return (
+                  <div>
+                    <div className="text-2xl font-bold">₹{outstanding.toLocaleString()}</div>
+                    <p className="text-xs text-muted-foreground">
+                      {pendingTxns.length} students pending
+                    </p>
+                  </div>
+                );
+              })()}
+            </CardContent>
+          </Card>
+
+          <Card className="glass-card">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Top Class</CardTitle>
+              <Check className="h-4 w-4 text-purple-500" />
+            </CardHeader>
+            <CardContent>
+              {(() => {
+                // Need participants for class data. 
+                // If event.participants is populated (it should be)
+                const participants = (event as any).participants as Student[] || [];
+                if (participants.length === 0) return <div className="text-sm text-muted-foreground">No data</div>;
+
+                const classMap: Record<string, { total: number, paid: number }> = {};
+                const pendingStudentIds = new Set(
+                  transactions.filter(t => t.id.startsWith('pending_')).map(t => t.studentId)
+                );
+
+                participants.forEach(p => {
+                  if (!classMap[p.class]) classMap[p.class] = { total: 0, paid: 0 };
+                  classMap[p.class].total++;
+                  if (!pendingStudentIds.has(p.id)) {
+                    classMap[p.class].paid++;
+                  }
+                });
+
+                let bestClass = '-';
+                let bestRate = -1;
+
+                Object.entries(classMap).forEach(([cls, stats]) => {
+                  const rate = stats.total > 0 ? stats.paid / stats.total : 0;
+                  if (rate > bestRate) {
+                    bestRate = rate;
+                    bestClass = cls;
+                  }
+                });
+
+                return (
+                  <div>
+                    <div className="text-2xl font-bold">{bestClass}</div>
+                    <p className="text-xs text-muted-foreground">
+                      {(bestRate * 100).toFixed(0)}% completion
+                    </p>
+                  </div>
+                );
+              })()}
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       {/* Transactions Card */}
       <Card className="glass-card shadow-md hover-lift">
         <CardContent className="pt-6">
           {/* Mobile View */}
           <div className="grid gap-4 md:hidden">
-            {transactions?.map(transaction => (
+            {filteredTransactions?.map(transaction => (
               <Card key={transaction.id} className="w-full">
                 <CardHeader>
                   <div className="flex justify-between items-start">
@@ -278,7 +435,7 @@ export default function EventPaymentsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {transactions?.map((transaction) => (
+                {filteredTransactions?.map((transaction) => (
                   <TableRow key={transaction.id}>
                     <TableCell className="font-code text-center">
                       {transaction.id.startsWith('pending_') ? <span className="text-muted-foreground italic">BALANCE DUE</span> : transaction.id}
@@ -305,9 +462,11 @@ export default function EventPaymentsPage() {
               </TableBody>
             </Table>
           </div>
-          {transactions?.length === 0 && (
+          {filteredTransactions?.length === 0 && (
             <div className="text-center py-12 text-muted-foreground">
-              No payments found for this event.
+              {filterStatus === 'all'
+                ? 'No payments found for this event.'
+                : `No ${filterStatus} payments found.`}
             </div>
           )}
         </CardContent>

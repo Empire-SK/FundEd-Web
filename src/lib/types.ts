@@ -38,6 +38,9 @@ export type Event = {
   payments?: Payment[];
   participantIds?: string[];
   participantCount?: number;
+  paidCount?: number;
+  pendingCount?: number;
+  status?: string; // Added status field
 };
 
 export type Student = {
