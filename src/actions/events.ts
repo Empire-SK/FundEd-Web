@@ -77,6 +77,9 @@ export async function createEvent(data: {
   selectedStudents: string[];
 }) {
   try {
+      if (new Date(data.deadline) < new Date(new Date().setHours(0, 0, 0, 0))) {
+          return { success: false, error: 'Deadline must be today or in the future' };
+      }
     const event = await prisma.event.create({
       data: {
         name: data.name,
@@ -119,7 +122,12 @@ export async function saveDraft(data: {
     if (data.name) eventData.name = data.name;
     if (data.description) eventData.description = data.description;
     if (data.cost !== undefined) eventData.cost = data.cost;
-    if (data.deadline) eventData.deadline = new Date(data.deadline);
+    if (data.deadline) {
+        if (new Date(data.deadline) < new Date(new Date().setHours(0, 0, 0, 0))) {
+            return { success: false, error: 'Deadline must be today or in the future' };
+        }
+        eventData.deadline = new Date(data.deadline);
+    }
     if (data.paymentOptions) eventData.paymentOptions = JSON.stringify(data.paymentOptions);
     if (data.qrCodeUrl !== undefined) eventData.qrCodeUrl = data.qrCodeUrl;
     if (data.category) eventData.category = data.category;
@@ -165,6 +173,9 @@ export async function updateEvent(id: string, data: {
   selectedStudents: string[];
 }) {
   try {
+      if (new Date(data.deadline) < new Date(new Date().setHours(0, 0, 0, 0))) {
+          return { success: false, error: 'Deadline must be today or in the future' };
+      }
     const event = await prisma.event.update({
       where: { id },
       data: {

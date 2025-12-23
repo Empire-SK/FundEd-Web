@@ -101,12 +101,26 @@ export default function StudentsPage() {
             header: true,
             complete: async (results) => {
                 const studentsData = results.data
-                    .filter((row: any) => row.name && row.rollNo && row.email && row.class)
+                    .map((row: any) => {
+                        // Normalize keys to lowercase for flexible matching
+                        const normalizedRow: any = {};
+                        Object.keys(row).forEach(key => {
+                            const lowerKey = key.toLowerCase().trim();
+                            if (lowerKey === 'name' || lowerKey === 'student name') normalizedRow.name = row[key];
+                            else if (lowerKey.includes('roll') || lowerKey === 'id') normalizedRow.rollNo = row[key];
+                            else if (lowerKey.includes('mail')) normalizedRow.email = row[key];
+                            else if (lowerKey === 'class' || lowerKey === 'grade') normalizedRow.class = row[key];
+                            else if (lowerKey.includes('phone') || lowerKey.includes('mobile')) normalizedRow.phone = row[key];
+                        });
+                        return normalizedRow;
+                    })
+                    .filter((row: any) => row.name && row.rollNo) // Basic validation
                     .map((row: any) => ({
                         name: row.name,
                         rollNo: row.rollNo,
                         email: row.email,
-                        class: row.class,
+                        class: row.class || 'N/A', // Default if missing
+                        phone: row.phone,
                     }));
 
                 if (studentsData.length === 0) {

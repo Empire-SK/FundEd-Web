@@ -28,6 +28,7 @@ export function AddStudentDialog({ trigger, onSuccess }: AddStudentDialogProps) 
     const [formData, setFormData] = useState({
         name: '',
         rollNumber: '',
+        class: '',
         email: '',
         phone: '',
     });
@@ -35,7 +36,7 @@ export function AddStudentDialog({ trigger, onSuccess }: AddStudentDialogProps) 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
 
-        if (!formData.name || !formData.rollNumber) {
+        if (!formData.name || !formData.rollNumber || !formData.class) {
             toast({
                 title: 'Error',
                 description: 'Please fill in all required fields',
@@ -44,12 +45,40 @@ export function AddStudentDialog({ trigger, onSuccess }: AddStudentDialogProps) 
             return;
         }
 
+        // Validate Email
+        if (formData.email) {
+            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            if (!emailRegex.test(formData.email)) {
+                toast({
+                    title: 'Invalid Email',
+                    description: 'Please enter a valid email address (e.g., student@example.com).',
+                    variant: 'destructive',
+                });
+                return;
+            }
+        }
+
+        // Validate Phone
+        if (formData.phone) {
+            // Check if it has at least 10 digits
+            const phoneDigits = formData.phone.replace(/\D/g, '');
+            if (phoneDigits.length < 10) {
+                toast({
+                    title: 'Invalid Phone Number',
+                    description: 'Please enter a valid phone number with at least 10 digits.',
+                    variant: 'destructive',
+                });
+                return;
+            }
+        }
+
         setLoading(true);
 
         try {
             const result = await addStudent({
                 name: formData.name,
                 rollNumber: formData.rollNumber,
+                class: formData.class,
                 email: formData.email || undefined,
                 phone: formData.phone || undefined,
             });
@@ -60,7 +89,7 @@ export function AddStudentDialog({ trigger, onSuccess }: AddStudentDialogProps) 
                     description: `${formData.name} (${formData.rollNumber}) has been added to the system.`,
                 });
 
-                setFormData({ name: '', rollNumber: '', email: '', phone: '' });
+                setFormData({ name: '', rollNumber: '', class: '', email: '', phone: '' });
                 setOpen(false);
 
                 if (onSuccess) {
@@ -129,6 +158,20 @@ export function AddStudentDialog({ trigger, onSuccess }: AddStudentDialogProps) 
                                 placeholder="Enter roll number"
                                 value={formData.rollNumber}
                                 onChange={(e) => setFormData({ ...formData, rollNumber: e.target.value })}
+                                required
+                            />
+                        </div>
+
+                        {/* Class */}
+                        <div className="space-y-2">
+                            <Label htmlFor="class">
+                                Class / Grade <span className="text-red-500">*</span>
+                            </Label>
+                            <Input
+                                id="class"
+                                placeholder="Enter class (e.g. 10A)"
+                                value={formData.class}
+                                onChange={(e) => setFormData({ ...formData, class: e.target.value })}
                                 required
                             />
                         </div>

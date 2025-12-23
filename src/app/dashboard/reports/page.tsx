@@ -436,16 +436,16 @@ export default function ReportsPage() {
             {
                 reportSummary && (
                     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 animate-slide-up">
-                        <Card className="hover-lift">
+                        <GlassCard className="hover-lift">
                             <CardHeader className="pb-2">
                                 <CardTitle className="text-sm font-medium text-muted-foreground">Total Transactions</CardTitle>
                             </CardHeader>
                             <CardContent>
                                 <div className="text-2xl font-bold">{reportSummary.totalTransactions || 0}</div>
                             </CardContent>
-                        </Card>
+                        </GlassCard>
 
-                        <Card className="hover-lift border-green-200 dark:border-green-900">
+                        <GlassCard className="hover-lift border-green-200/20 dark:border-green-900/50 bg-green-500/5">
                             <CardHeader className="pb-2">
                                 <CardTitle className="text-sm font-medium text-muted-foreground">Total Collected</CardTitle>
                             </CardHeader>
@@ -454,9 +454,9 @@ export default function ReportsPage() {
                                     ₹{(reportSummary.totalCollected || reportSummary.paidAmount || 0).toLocaleString()}
                                 </div>
                             </CardContent>
-                        </Card>
+                        </GlassCard>
 
-                        <Card className="hover-lift border-orange-200 dark:border-orange-900">
+                        <GlassCard className="hover-lift border-orange-200/20 dark:border-orange-900/50 bg-orange-500/5">
                             <CardHeader className="pb-2">
                                 <CardTitle className="text-sm font-medium text-muted-foreground">Pending Amount</CardTitle>
                             </CardHeader>
@@ -465,16 +465,16 @@ export default function ReportsPage() {
                                     ₹{(reportSummary.totalPending || reportSummary.pendingAmount || 0).toLocaleString()}
                                 </div>
                             </CardContent>
-                        </Card>
+                        </GlassCard>
 
-                        <Card className="hover-lift">
+                        <GlassCard className="hover-lift">
                             <CardHeader className="pb-2">
                                 <CardTitle className="text-sm font-medium text-muted-foreground">Paid Count</CardTitle>
                             </CardHeader>
                             <CardContent>
                                 <div className="text-2xl font-bold">{reportSummary.paidCount || 0}</div>
                             </CardContent>
-                        </Card>
+                        </GlassCard>
                     </div>
                 )
             }
@@ -482,7 +482,7 @@ export default function ReportsPage() {
             {/* Transaction Preview */}
             {
                 transactions.length > 0 && (
-                    <Card className="shadow-md animate-slide-up">
+                    <GlassCard className="shadow-md animate-slide-up">
                         <CardHeader>
                             <CardTitle>Transaction Preview</CardTitle>
                             <CardDescription>
@@ -525,13 +525,13 @@ export default function ReportsPage() {
                                 </p>
                             )}
                         </CardContent>
-                    </Card>
+                    </GlassCard>
                 )
             }
 
             {
                 transactions.length === 0 && !isLoading && (
-                    <Card className="py-12">
+                    <GlassCard className="py-12">
                         <CardContent className="text-center">
                             <FileText className="h-12 w-12 mx-auto mb-4 opacity-20" />
                             <p className="text-lg font-medium">No Report Generated</p>
@@ -539,7 +539,7 @@ export default function ReportsPage() {
                                 Configure filters above and click "Generate Report" to view data
                             </p>
                         </CardContent>
-                    </Card>
+                    </GlassCard>
                 )
             }
         </div >

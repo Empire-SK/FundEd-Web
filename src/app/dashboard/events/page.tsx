@@ -49,13 +49,12 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
-import { getEvents, createEvent, updateEvent, deleteEvent, saveDraft } from '@/actions/events';
+import { getEvents, createEvent, updateEvent, deleteEvent } from '@/actions/events';
 import { getStudents } from '@/actions/students';
 import type { Event, Student } from '@/lib/types';
 import { format } from 'date-fns';
 import { GlassCard } from '@/components/ui/glass-card';
 import { PageLoader } from '@/components/ui/page-loader';
-import { useDebounce } from '@/hooks/use-debounce';
 import {
     AlertDialog,
     AlertDialogAction,
@@ -85,50 +84,6 @@ export default function EventsPage() {
     const [selectedStudents, setSelectedStudents] = useState<string[]>([]);
     const [searchQuery, setSearchQuery] = useState('');
     const [isSelectionDialogOpen, setIsSelectionDialogOpen] = useState(false);
-    const [savingStatus, setSavingStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
-
-    // Debounced values for autosave
-    const debouncedName = useDebounce(name, 1000);
-    const debouncedDescription = useDebounce(description, 1000);
-    const debouncedCost = useDebounce(cost, 1000);
-
-    // Autosave Effect
-    useEffect(() => {
-        // Skip initial load or reset
-        if (!isDialogOpen) return;
-
-        const saveData = async () => {
-            setSavingStatus('saving');
-            // Ensure cost is number
-            const numCost = parseFloat(cost);
-            // Don't save if cost is invalid (unless it's empty, but cost=0 default)
-
-            const res = await saveDraft({
-                id: editingEvent?.id,
-                name,
-                description,
-                cost: parseFloat(cost) || 0,
-                deadline: deadline?.toISOString(),
-                category,
-                paymentOptions,
-                selectedStudents
-            });
-
-            if (res.success && res.data) {
-                setSavingStatus('saved');
-                if (!editingEvent?.id) {
-                    setEditingEvent(res.data as unknown as Event);
-                }
-            } else {
-                setSavingStatus('error');
-            }
-        };
-
-        if (name || description || cost) {
-            saveData();
-        }
-
-    }, [debouncedName, debouncedDescription, debouncedCost, category, paymentOptions, selectedStudents, deadline]);
 
     const filteredStudents = students.filter(student =>
         student.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -255,7 +210,6 @@ export default function EventsPage() {
         setPaymentOptions(event.paymentOptions);
         setSelectedStudents(event.participantIds || []);
         setIsDialogOpen(true);
-        setSavingStatus('saved');
     };
 
     const resetForm = () => {
@@ -268,7 +222,6 @@ export default function EventsPage() {
         setPaymentOptions(['Razorpay']);
         setSelectedStudents(students.map(s => s.id));
         setSearchQuery('');
-        setSavingStatus('idle');
     };
 
     const copyPaymentLink = (eventId: string) => {
@@ -324,10 +277,7 @@ export default function EventsPage() {
                             <form onSubmit={handleSubmit}>
                                 <DialogHeader>
                                     <div className="flex items-center justify-between">
-                                        <DialogTitle>{editingEvent ? (editingEvent.status === 'DRAFT' ? 'Edit Draft' : 'Edit Event') : 'Create New Event'}</DialogTitle>
-                                        <span className="text-xs text-muted-foreground uppercase tracking-widest">
-                                            {savingStatus === 'saving' ? 'Saving...' : savingStatus === 'saved' ? 'Saved' : ''}
-                                        </span>
+                                        <DialogTitle>{editingEvent ? 'Edit Event' : 'Create New Event'}</DialogTitle>
                                     </div>
                                     <DialogDescription>
                                         {editingEvent ? 'Update event details' : 'Create a new fund collection event'}
@@ -392,6 +342,7 @@ export default function EventsPage() {
                                                         mode="single"
                                                         selected={deadline}
                                                         onSelect={setDeadline}
+                                                        disabled={(date) => date < new Date(new Date().setHours(0, 0, 0, 0))}
                                                         initialFocus
                                                     />
                                                 </PopoverContent>
@@ -589,14 +540,6 @@ export default function EventsPage() {
                                     <div className="flex-1">
                                         <div className="flex items-center gap-2">
                                             <CardTitle className="text-xl">{event.name}</CardTitle>
-                                            {event.status === 'DRAFT' && (
-                                                <Badge
-                                                    variant="secondary"
-                                                    className="bg-amber-100 text-amber-800 hover:bg-amber-100 text-xs px-2 py-0.5 h-5"
-                                                >
-                                                    Draft
-                                                </Badge>
-                                            )}
                                         </div>
                                         <CardDescription className="mt-1">{event.description}</CardDescription>
                                     </div>
