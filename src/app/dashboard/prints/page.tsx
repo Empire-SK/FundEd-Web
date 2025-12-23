@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
+import { GlassCard } from '@/components/ui/glass-card';
 import {
   Card,
   CardContent,
@@ -159,7 +160,7 @@ export default function PrintsPage() {
 
   return (
     <div className="grid gap-8">
-      <Card>
+      <GlassCard>
         <CardHeader>
           <CardTitle>Print Distribution</CardTitle>
           <CardDescription>
@@ -241,9 +242,9 @@ export default function PrintsPage() {
             Mark as Distributed
           </Button>
         </CardFooter>
-      </Card>
+      </GlassCard>
 
-      <Card>
+      <GlassCard>
         <CardHeader>
           <CardTitle>Distribution History</CardTitle>
           <CardDescription>
@@ -254,7 +255,7 @@ export default function PrintsPage() {
           {/* Mobile View */}
           <div className="grid gap-4 md:hidden">
             {distributions?.map(dist => (
-              <Card key={dist.id}>
+              <GlassCard key={dist.id} variant="bordered" className="bg-white/5">
                 <CardContent className="p-4 flex justify-between items-center">
                   <div>
                     <p className="font-medium">{dist.studentName}</p>
@@ -265,7 +266,7 @@ export default function PrintsPage() {
                     <p>{new Date(dist.distributedAt).toLocaleTimeString()}</p>
                   </div>
                 </CardContent>
-              </Card>
+              </GlassCard>
             ))}
           </div>
           {/* Desktop View */}
@@ -297,7 +298,7 @@ export default function PrintsPage() {
             </div>
           )}
         </CardContent>
-      </Card>
+      </GlassCard>
     </div>
   );
 }

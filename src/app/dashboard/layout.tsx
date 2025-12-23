@@ -151,7 +151,7 @@ export default function DashboardLayout({
   }
 
   return (
-    <div className="dark min-h-screen bg-black text-stone-200 font-sans selection:bg-emerald-500/30 selection:text-emerald-100 overflow-hidden relative cursor-none">
+    <div className="dark min-h-screen bg-black text-stone-200 font-sans selection:bg-emerald-500/30 selection:text-emerald-100 overflow-x-hidden relative cursor-none">
 
       {/* Custom Cursor */}
       <CustomCursor />
@@ -279,7 +279,7 @@ export default function DashboardLayout({
                 </DropdownMenuContent>
               </DropdownMenu>
             </header>
-            <main className="flex flex-1 flex-col gap-4 p-4 md:gap-8 md:p-8 relative z-10">
+            <main className="flex flex-1 flex-col gap-4 p-2 sm:p-4 md:gap-8 md:p-8 relative z-10 overflow-hidden w-full">
               {children}
             </main>
 

@@ -1,5 +1,6 @@
 'use client';
 
+import { GlassCard } from '@/components/ui/glass-card';
 import {
     Card,
     CardContent,
@@ -51,27 +52,27 @@ interface StatCardProps {
 
 function StatCard({ title, value, description, icon, trend, className }: StatCardProps) {
     return (
-        <Card className={`relative overflow-hidden transition-all hover:shadow-lg ${className}`}>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">{title}</CardTitle>
-                <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-primary">
+        <GlassCard className={`relative overflow-hidden transition-all hover:shadow-lg w-full min-w-0 ${className}`}>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 pr-12">
+                <CardTitle className="text-sm font-medium truncate pr-2">{title}</CardTitle>
+                <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-primary shrink-0">
                     {icon}
                 </div>
             </CardHeader>
             <CardContent>
-                <div className="text-2xl font-bold">{value}</div>
-                <p className="text-xs text-muted-foreground mt-1">
+                <div className="text-2xl font-bold truncate">{value}</div>
+                <p className="text-xs text-muted-foreground mt-1 truncate">
                     {description}
                 </p>
                 {trend && (
-                    <div className="flex items-center mt-2 text-xs text-green-600 dark:text-green-400">
-                        <TrendingUp className="h-3 w-3 mr-1" />
-                        {trend}
+                    <div className="flex items-center mt-2 text-xs text-green-600 dark:text-green-400 truncate">
+                        <TrendingUp className="h-3 w-3 mr-1 shrink-0" />
+                        <span className="truncate">{trend}</span>
                     </div>
                 )}
             </CardContent>
-            <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-primary/5 to-transparent rounded-full -mr-16 -mt-16" />
-        </Card>
+            <div className="absolute top-0 right-0 w-24 h-24 md:w-32 md:h-32 bg-gradient-to-br from-primary/5 to-transparent rounded-full -mr-12 -mt-12 md:-mr-16 md:-mt-16 pointer-events-none" />
+        </GlassCard>
     );
 }
 
@@ -146,7 +147,7 @@ export default function DashboardPage() {
             </div>
 
             {/* Stats Grid */}
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 min-w-0">
                 <StatCard
                     title="Total Events"
                     value={stats.totalEvents.toString()}
@@ -180,7 +181,7 @@ export default function DashboardPage() {
             <StatisticsChart />
 
             {/* Recent Transactions */}
-            <Card className="shadow-md">
+            <GlassCard className="shadow-md">
                 <CardHeader>
                     <div className="flex items-center justify-between">
                         <div>
@@ -200,12 +201,14 @@ export default function DashboardPage() {
                     {/* Mobile View */}
                     <div className="grid gap-4 md:hidden">
                         {recentTransactions?.map(transaction => (
-                            <Card key={transaction.id} className="w-full border-l-4 border-l-primary/20">
+                            <GlassCard key={transaction.id} className="w-full border-l-4 border-l-primary/20">
                                 <CardHeader>
                                     <div className="flex justify-between items-start">
-                                        <div>
-                                            <CardTitle className="text-lg font-code">{transaction.id}</CardTitle>
-                                            <CardDescription>{transaction.studentName}</CardDescription>
+                                        <div className="min-w-0 flex-1 mr-2">
+                                            <CardTitle className="text-sm font-code truncate" title={transaction.id}>
+                                                #{transaction.id.slice(-8)}
+                                            </CardTitle>
+                                            <CardDescription className="truncate">{transaction.studentName}</CardDescription>
                                         </div>
                                         <StatusBadge status={transaction.status} />
                                     </div>
@@ -230,7 +233,7 @@ export default function DashboardPage() {
                                         <span>{transaction.paymentMethod}</span>
                                     </div>
                                 </CardContent>
-                            </Card>
+                            </GlassCard>
                         ))}
                     </div>
 
@@ -291,7 +294,7 @@ export default function DashboardPage() {
                         </div>
                     )}
                 </CardContent>
-            </Card>
+            </GlassCard>
         </div>
     );
 }

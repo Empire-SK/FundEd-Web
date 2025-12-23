@@ -6,6 +6,7 @@ import { revalidatePath } from 'next/cache';
 interface AddStudentInput {
   name: string;
   rollNumber: string;
+  class: string;
   email?: string;
   phone?: string;
 }
@@ -27,7 +28,7 @@ export async function addStudent(input: AddStudentInput) {
         name: input.name,
         rollNo: input.rollNumber,
         email: input.email || '',
-        class: '', // Default empty class
+        class: input.class,
       },
     });
 
