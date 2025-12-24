@@ -108,21 +108,28 @@ export default function Home() {
       {/* Navigation - Enhanced */}
       <nav className="fixed top-0 w-full z-[60] bg-transparent py-8 backdrop-blur-sm">
         <div className="w-full px-8 md:px-16 flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-4 group">
+          <a href="/" className="flex items-center gap-4 group">
             <div className="relative">
               <div className="absolute inset-0 bg-emerald-500/20 blur-xl rounded-full group-hover:bg-emerald-500/30 transition-all"></div>
               <span className="relative text-base font-bold tracking-[0.25em] text-white group-hover:text-emerald-200 transition-colors uppercase">
                 FundEd <span className="text-emerald-500/50 mx-3">●</span> Finance
               </span>
             </div>
-          </Link>
+          </a>
 
-          <Link href="/login">
-            <Button className="relative text-xs font-bold tracking-[0.25em] bg-emerald-500/10 backdrop-blur-md border-2 border-emerald-500/30 text-emerald-100 hover:bg-emerald-500/20 hover:border-emerald-400/50 uppercase transition-all px-8 py-6 rounded-full overflow-hidden group">
-              <div className="absolute inset-0 bg-gradient-to-r from-emerald-500/0 via-emerald-500/20 to-emerald-500/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700"></div>
-              <span className="relative z-10">Access Portal</span>
-            </Button>
-          </Link>
+          <div className="flex items-center gap-4">
+            <Link href="/check-status" className="hidden md:block">
+              <Button variant="ghost" className="text-sm font-medium tracking-[0.1em] text-emerald-100 hover:text-white uppercase hover:bg-emerald-500/10">
+                Check Status
+              </Button>
+            </Link>
+            <Link href="/login">
+              <Button className="relative text-xs font-bold tracking-[0.25em] bg-emerald-500/10 backdrop-blur-md border-2 border-emerald-500/30 text-emerald-100 hover:bg-emerald-500/20 hover:border-emerald-400/50 uppercase transition-all px-8 py-6 rounded-full overflow-hidden group">
+                <div className="absolute inset-0 bg-gradient-to-r from-emerald-500/0 via-emerald-500/20 to-emerald-500/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700"></div>
+                <span className="relative z-10">Access Portal</span>
+              </Button>
+            </Link>
+          </div>
         </div>
       </nav>
 
@@ -312,6 +319,7 @@ export default function Home() {
             <div className="flex gap-10">
               <Link href="#" className="text-stone-500 hover:text-emerald-400 transition-colors text-xs tracking-widest uppercase">Privacy</Link>
               <Link href="#" className="text-stone-500 hover:text-emerald-400 transition-colors text-xs tracking-widest uppercase">Terms</Link>
+              <Link href="/check-status" className="text-stone-500 hover:text-emerald-400 transition-colors text-xs tracking-widest uppercase">Check Status</Link>
               <Link href="#" className="text-stone-500 hover:text-emerald-400 transition-colors text-xs tracking-widest uppercase">Support</Link>
             </div>
           </div>

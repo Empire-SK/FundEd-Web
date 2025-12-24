@@ -37,6 +37,7 @@ import {
     Mail,
     User,
     GraduationCap,
+    Share2,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { getStudents, deleteStudent, uploadStudentsCsv } from '@/actions/students';
@@ -165,6 +166,15 @@ export default function StudentsPage() {
             .slice(0, 2);
     };
 
+    const handleCopyPublicLink = () => {
+        const link = `${window.location.origin}/check-status`;
+        navigator.clipboard.writeText(link);
+        toast({
+            title: 'Public Portal Link Copied',
+            description: 'Share this link with students to check their status.',
+        });
+    };
+
     if (isLoading) {
         return <PageLoader message="Loading students..." />;
     }
@@ -181,6 +191,10 @@ export default function StudentsPage() {
                 </div>
 
                 <div className="flex flex-col sm:flex-row gap-2 w-full md:w-auto">
+                    <Button variant="outline" onClick={handleCopyPublicLink} className="gap-2 bg-white/5 border-white/10 hover:bg-white/10 hover:border-emerald-500/50 w-full sm:w-auto">
+                        <Share2 className="h-4 w-4" />
+                        Share Portal
+                    </Button>
                     <AddStudentDialog onSuccess={fetchData} />
 
                     <Dialog open={uploadDialogOpen} onOpenChange={setUploadDialogOpen}>
