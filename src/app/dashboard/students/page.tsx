@@ -288,7 +288,7 @@ export default function StudentsPage() {
                             <CardContent className="space-y-2">
                                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                                     <Mail className="h-3.5 w-3.5" />
-                                    <span className="truncate">{student.email}</span>
+                                    <span className="truncate">{student.email || 'Not available'}</span>
                                 </div>
                                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                                     <GraduationCap className="h-3.5 w-3.5" />
