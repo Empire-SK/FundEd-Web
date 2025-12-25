@@ -43,6 +43,8 @@ export async function getPrintData() {
         })),
         distributions: distributions.map(d => ({
           ...d,
+          studentName: d.student.name,
+          studentRoll: d.student.rollNo,
           distributedAt: d.distributedAt.toISOString(),
         })),
         payments: payments.map(p => ({

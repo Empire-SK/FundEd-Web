@@ -62,6 +62,12 @@ export default function PrintsPage() {
   const [allStudents, setAllStudents] = useState<Student[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
+  // Derived filtered distributions for the history view
+  const filteredDistributions = useMemo(() => {
+    if (!selectedEventId || !distributions) return [];
+    return distributions.filter(d => d.eventId === selectedEventId);
+  }, [distributions, selectedEventId]);
+
   useEffect(() => {
     const fetchData = async () => {
       setIsLoading(true);
@@ -83,13 +89,18 @@ export default function PrintsPage() {
 
 
   const studentsWhoPaid = useMemo(() => {
-    if (!allStudents || !paidPayments || !distributions) return [];
+    if (!allStudents || !paidPayments || !distributions || !selectedEventId) return [];
 
-    const paidStudentIds = paidPayments.map(p => p.studentId);
-    const distributedStudentIds = distributions.map(d => d.studentId);
+    const eventPaidStudentIds = paidPayments
+      .filter(p => p.eventId === selectedEventId)
+      .map(p => p.studentId);
 
-    return allStudents.filter(s => paidStudentIds.includes(s.id) && !distributedStudentIds.includes(s.id));
-  }, [allStudents, paidPayments, distributions]);
+    const eventDistributedStudentIds = distributions
+      .filter(d => d.eventId === selectedEventId)
+      .map(d => d.studentId);
+
+    return allStudents.filter(s => eventPaidStudentIds.includes(s.id) && !eventDistributedStudentIds.includes(s.id));
+  }, [allStudents, paidPayments, distributions, selectedEventId]);
 
 
   const filteredStudents = useMemo(() => {
@@ -254,7 +265,7 @@ export default function PrintsPage() {
         <CardContent>
           {/* Mobile View */}
           <div className="grid gap-4 md:hidden">
-            {distributions?.map(dist => (
+            {filteredDistributions?.map(dist => (
               <GlassCard key={dist.id} variant="bordered" className="bg-white/5">
                 <CardContent className="p-4 flex justify-between items-center">
                   <div>
@@ -281,7 +292,7 @@ export default function PrintsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {distributions?.map(dist => (
+                {filteredDistributions?.map(dist => (
                   <TableRow key={dist.id}>
                     <TableCell className="font-medium">{dist.studentName}</TableCell>
                     <TableCell>{dist.studentRoll}</TableCell>
@@ -292,7 +303,7 @@ export default function PrintsPage() {
               </TableBody>
             </Table>
           </div>
-          {distributions?.length === 0 && (
+          {filteredDistributions?.length === 0 && (
             <div className="text-center py-12 text-muted-foreground">
               No distribution history for this event yet.
             </div>
