@@ -27,6 +27,7 @@ import type { QrCode } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 import Image from 'next/image';
 import { getQrCodes, addQrCode, deleteQrCode } from '@/actions/settings';
+import { getUsers, createUser, deleteUser } from '@/actions/users';
 import { PageLoader } from '@/components/ui/page-loader';
 import { ImageDropzone } from '@/components/image-dropzone';
 
@@ -35,37 +36,35 @@ import jsQR from 'jsqr';
 export default function SettingsPage() {
   const { toast } = useToast();
   const [qrCodes, setQrCodes] = useState<QrCode[]>([]);
+  const [users, setUsers] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  const [open, setOpen] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  // QR Code State
+  const [openQr, setOpenQr] = useState(false);
+  const [isSubmittingQr, setIsSubmittingQr] = useState(false);
   const [newQrName, setNewQrName] = useState('');
   const [newQrUrl, setNewQrUrl] = useState('');
+
+  // User Management State
+  const [openUser, setOpenUser] = useState(false);
+  const [isSubmittingUser, setIsSubmittingUser] = useState(false);
+  const [newUserName, setNewUserName] = useState('');
+  const [newUserEmail, setNewUserEmail] = useState('');
+  const [newUserPassword, setNewUserPassword] = useState('');
 
   const handleFileSelect = async (file: File) => {
     if (!file) return;
 
-    // 1. Size Validation (2MB limit)
     if (file.size > 2 * 1024 * 1024) {
-      toast({
-        variant: "destructive",
-        title: "File Too Large",
-        description: "Please upload an image smaller than 2MB."
-      });
+      toast({ variant: "destructive", title: "File Too Large", description: "Please upload an image smaller than 2MB." });
       return;
     }
 
-    // 2. Format Validation
     if (!['image/jpeg', 'image/png', 'image/jpg', 'image/webp'].includes(file.type)) {
-      toast({
-        variant: "destructive",
-        title: "Invalid Format",
-        description: "Only PNG, JPG, and WebP formats are allowed."
-      });
+      toast({ variant: "destructive", title: "Invalid Format", description: "Only PNG, JPG, and WebP formats are allowed." });
       return;
     }
 
-    // 3. Read File and Validate QR
     const reader = new FileReader();
     reader.onload = (event) => {
       const imageUrl = event.target?.result as string;
@@ -84,46 +83,36 @@ export default function SettingsPage() {
         const code = jsQR(imageData.data, imageData.width, imageData.height);
 
         if (code) {
-          // Valid QR Code found
-          setNewQrUrl(imageUrl); // Store as Base64 Data URL
-          toast({
-            title: "QR Code Verified",
-            description: "Successfully detected a valid QR code."
-          });
+          setNewQrUrl(imageUrl);
+          toast({ title: "QR Code Verified", description: "Successfully detected a valid QR code." });
         } else {
-          // No QR Code found
           setNewQrUrl('');
-          toast({
-            variant: "destructive",
-            title: "Invalid QR Code",
-            description: "Could not detect a valid QR code in this image. Please ensure the image is clear."
-          });
+          toast({ variant: "destructive", title: "Invalid QR Code", description: "Could not detect a valid QR code in this image." });
         }
       };
     };
     reader.readAsDataURL(file);
   };
 
-  const fetchQrCodes = async () => {
+  const fetchData = async () => {
     setIsLoading(true);
-    const res = await getQrCodes();
-    if (res.success && res.data) {
-      setQrCodes(res.data as QrCode[]);
-    } else {
-      toast({ variant: 'destructive', title: 'Error', description: 'Failed to fetch QR codes' });
-    }
+    const [qrRes, usersRes] = await Promise.all([getQrCodes(), getUsers()]);
+
+    if (qrRes.success) setQrCodes(qrRes.data as QrCode[]);
+    if (usersRes.success) setUsers(usersRes.data as any[]);
+
     setIsLoading(false);
   };
 
   useEffect(() => {
-    fetchQrCodes();
+    fetchData();
   }, []);
 
-  const handleDelete = async (id: string) => {
+  const handleDeleteQr = async (id: string) => {
     const res = await deleteQrCode(id);
     if (res.success) {
       toast({ title: 'QR Code Deleted' });
-      fetchQrCodes();
+      fetchData();
     } else {
       toast({ variant: 'destructive', title: 'Error', description: res.error });
     }
@@ -131,36 +120,53 @@ export default function SettingsPage() {
 
   const handleAddQrCode = async () => {
     if (!newQrName || !newQrUrl) {
-      toast({
-        variant: "destructive",
-        title: "Missing Information",
-        description: "Please provide both a name and a URL for the QR code."
-      });
+      toast({ variant: "destructive", title: "Missing Information", description: "Please provide both a name and a URL." });
       return;
     }
-    setIsSubmitting(true);
-
+    setIsSubmittingQr(true);
     const res = await addQrCode({ name: newQrName, url: newQrUrl });
-
     if (res.success) {
-      toast({
-        title: "QR Code Added",
-        description: "Your new QR code has been saved."
-      });
-
+      toast({ title: "QR Code Added" });
       setNewQrName('');
       setNewQrUrl('');
-      setOpen(false);
-      fetchQrCodes();
+      setOpenQr(false);
+      fetchData();
     } else {
-      toast({
-        variant: "destructive",
-        title: "Operation Failed",
-        description: "There was an error saving your QR code."
-      });
+      toast({ variant: "destructive", title: "Operation Failed", description: "Error saving QR code." });
     }
+    setIsSubmittingQr(false);
+  };
 
-    setIsSubmitting(false);
+  const handleAddUser = async () => {
+    if (!newUserName || !newUserEmail || !newUserPassword) {
+      toast({ variant: "destructive", title: "Missing Information", description: "Please fill in all fields." });
+      return;
+    }
+    setIsSubmittingUser(true);
+    const res = await createUser({ name: newUserName, email: newUserEmail, password: newUserPassword });
+    if (res.success) {
+      toast({ title: "Admin Added", description: `${newUserName} has been added to the team.` });
+      setNewUserName('');
+      setNewUserEmail('');
+      setNewUserPassword('');
+      setOpenUser(false);
+      fetchData();
+    } else {
+      toast({ variant: "destructive", title: "Operation Failed", description: res.error });
+    }
+    setIsSubmittingUser(false);
+  };
+
+  const handleDeleteUser = async (id: string) => {
+    if (confirm("Are you sure you want to remove this admin?")) {
+      const res = await deleteUser(id);
+      if (res.success) {
+        toast({ title: "Admin Removed" });
+        fetchData();
+      } else {
+        toast({ variant: "destructive", title: "Error", description: res.error });
+      }
+    }
   };
 
   if (isLoading) {
@@ -168,102 +174,162 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="grid gap-6">
+    <div className="grid gap-8">
       <GlassCard>
         <CardHeader>
           <CardTitle>Settings</CardTitle>
-          <CardDescription>
-            Manage your personal settings and preferences.
-          </CardDescription>
+          <CardDescription>Manage your preferences, payment methods, and team access.</CardDescription>
         </CardHeader>
       </GlassCard>
 
-      <GlassCard>
-        <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div>
-            <CardTitle>Manage QR Codes</CardTitle>
-            <CardDescription>
-              Add, view, or remove your payment QR codes.
-            </CardDescription>
-          </div>
-          <Dialog open={open} onOpenChange={setOpen}>
-            <DialogTrigger asChild>
-              <Button className="w-full sm:w-auto">
-                <PlusCircle className="mr-2 h-4 w-4" />
-                Add New QR
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Add a New QR Code</DialogTitle>
-                <DialogDescription>
-                  Upload a QR code image. We'll verify it before saving.
-                </DialogDescription>
-              </DialogHeader>
-              <div className="grid gap-4 py-4">
-                <div className="grid gap-2">
-                  <Label htmlFor="qr-name">QR Code Name</Label>
-                  <Input id="qr-name" placeholder="e.g., GPay Business" value={newQrName} onChange={(e) => setNewQrName(e.target.value)} />
-                </div>
-                <div className="grid gap-2">
-                  <Label>QR Code Image</Label>
-                  <ImageDropzone
-                    onFileSelect={handleFileSelect}
-                    previewUrl={newQrUrl}
-                    onClear={() => {
-                      setNewQrUrl('');
-                    }}
-                  />
-                </div>
-              </div>
-              <DialogFooter>
-                <DialogClose asChild>
-                  <Button variant="outline" disabled={isSubmitting}>Cancel</Button>
-                </DialogClose>
-                <Button onClick={handleAddQrCode} disabled={isSubmitting}>
-                  {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                  Save QR Code
+      <div className="grid gap-6">
+        {/* QR CODES SECTION */}
+        <GlassCard>
+          <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div>
+              <CardTitle>Manage QR Codes</CardTitle>
+              <CardDescription>Add, view, or remove your payment QR codes.</CardDescription>
+            </div>
+            <Dialog open={openQr} onOpenChange={setOpenQr}>
+              <DialogTrigger asChild>
+                <Button className="w-full sm:w-auto">
+                  <PlusCircle className="mr-2 h-4 w-4" />
+                  Add New QR
                 </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
-        </CardHeader>
-        <CardContent>
-          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {isLoading && <p className="col-span-full text-center">Loading QR codes...</p>}
-            {qrCodes?.map(qr => (
-              <GlassCard key={qr.id} variant="bordered" className="bg-black/20">
-                <CardContent className="p-4 flex flex-col items-center justify-center gap-4">
-                  <Image
-                    src={qr.url}
-                    alt={qr.name}
-                    width={150}
-                    height={150}
-                    className="rounded-lg border aspect-square object-contain"
-                  />
-                  <p className="font-medium text-center">{qr.name}</p>
-                </CardContent>
-                <CardFooter className="p-2 border-t border-white/10">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="w-full text-destructive hover:text-destructive hover:bg-red-500/10"
-                    onClick={() => handleDelete(qr.id)}
-                  >
-                    <Trash2 className="mr-2 h-4 w-4" />
-                    Delete
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Add a New QR Code</DialogTitle>
+                  <DialogDescription>Upload a QR code image to be verified.</DialogDescription>
+                </DialogHeader>
+                <div className="grid gap-4 py-4">
+                  <div className="grid gap-2">
+                    <Label htmlFor="qr-name">QR Code Name</Label>
+                    <Input id="qr-name" placeholder="e.g., GPay Business" value={newQrName} onChange={(e) => setNewQrName(e.target.value)} />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label>QR Code Image</Label>
+                    <ImageDropzone
+                      onFileSelect={handleFileSelect}
+                      previewUrl={newQrUrl}
+                      onClear={() => setNewQrUrl('')}
+                    />
+                  </div>
+                </div>
+                <DialogFooter>
+                  <Button variant="outline" disabled={isSubmittingQr} onClick={() => setOpenQr(false)}>Cancel</Button>
+                  <Button onClick={handleAddQrCode} disabled={isSubmittingQr}>
+                    {isSubmittingQr ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                    Save QR Code
                   </Button>
-                </CardFooter>
-              </GlassCard>
-            ))}
-            {qrCodes?.length === 0 && !isLoading && (
-              <div className="sm:col-span-2 lg:col-span-3 xl:col-span-4 text-center py-12 text-muted-foreground border-2 border-dashed rounded-lg">
-                You haven't added any QR codes yet.
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {qrCodes?.length === 0 && (
+                <div className="col-span-full text-center py-8 text-muted-foreground border-2 border-dashed rounded-lg border-white/10">
+                  No QR codes found.
+                </div>
+              )}
+              {qrCodes?.map(qr => (
+                <GlassCard key={qr.id} variant="bordered" className="bg-black/20">
+                  <CardContent className="p-4 flex flex-col items-center gap-4">
+                    <Image
+                      src={qr.url}
+                      alt={qr.name}
+                      width={150}
+                      height={150}
+                      className="rounded-lg border aspect-square object-contain bg-white"
+                    />
+                    <p className="font-medium">{qr.name}</p>
+                  </CardContent>
+                  <CardFooter className="p-2 border-t border-white/10">
+                    <Button variant="ghost" size="sm" className="w-full text-destructive hover:bg-destructive/10" onClick={() => handleDeleteQr(qr.id)}>
+                      <Trash2 className="mr-2 h-4 w-4" /> Delete
+                    </Button>
+                  </CardFooter>
+                </GlassCard>
+              ))}
+            </div>
+          </CardContent>
+        </GlassCard>
+
+        {/* TEAM MANAGEMENT SECTION */}
+        <GlassCard>
+          <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div>
+              <CardTitle>Admin Team</CardTitle>
+              <CardDescription>Manage users who have administrative access to this dashboard.</CardDescription>
+            </div>
+            <Dialog open={openUser} onOpenChange={setOpenUser}>
+              <DialogTrigger asChild>
+                <Button className="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-500 text-white">
+                  <PlusCircle className="mr-2 h-4 w-4" />
+                  Add Admin
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Add New Administrator</DialogTitle>
+                  <DialogDescription>Create a new account for an admin user.</DialogDescription>
+                </DialogHeader>
+                <div className="grid gap-4 py-4">
+                  <div className="grid gap-2">
+                    <Label>Full Name</Label>
+                    <Input placeholder="John Doe" value={newUserName} onChange={(e) => setNewUserName(e.target.value)} />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label>Email Address</Label>
+                    <Input type="email" placeholder="john@example.com" value={newUserEmail} onChange={(e) => setNewUserEmail(e.target.value)} />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label>Password</Label>
+                    <Input type="text" placeholder="Secure password" value={newUserPassword} onChange={(e) => setNewUserPassword(e.target.value)} />
+                  </div>
+                </div>
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => setOpenUser(false)}>Cancel</Button>
+                  <Button onClick={handleAddUser} disabled={isSubmittingUser} className="bg-emerald-600 hover:bg-emerald-500 text-white">
+                    {isSubmittingUser ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                    Create Account
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+          </CardHeader>
+          <CardContent>
+            <div className="rounded-md border border-white/10">
+              <div className="grid grid-cols-4 gap-4 p-4 border-b border-white/10 bg-white/5 font-medium text-sm text-stone-400">
+                <div className="col-span-1">Name</div>
+                <div className="col-span-2">Email</div>
+                <div className="col-span-1 text-right">Actions</div>
               </div>
-            )}
-          </div>
-        </CardContent>
-      </GlassCard>
+              {users.length === 0 ? (
+                <div className="p-8 text-center text-muted-foreground">No users found.</div>
+              ) : (
+                users.map((user) => (
+                  <div key={user.id} className="grid grid-cols-4 gap-4 p-4 border-b border-white/10 items-center last:border-0 hover:bg-white/5 transition-colors">
+                    <div className="col-span-1 font-medium text-white flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-full bg-emerald-500/20 flex items-center justify-center text-xs text-emerald-500 font-bold uppercase">
+                        {user.name?.charAt(0) || 'U'}
+                      </div>
+                      {user.name}
+                    </div>
+                    <div className="col-span-2 text-stone-300 text-sm truncate">{user.email}</div>
+                    <div className="col-span-1 text-right">
+                      <Button variant="ghost" size="icon" className="h-8 w-8 text-stone-400 hover:text-red-400" onClick={() => handleDeleteUser(user.id)}>
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </CardContent>
+        </GlassCard>
+      </div>
     </div>
   );
 }
