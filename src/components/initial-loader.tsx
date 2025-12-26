@@ -57,7 +57,7 @@ export function InitialLoader() {
             {/* Bottom Loading Bar */}
             <div className="absolute bottom-10 w-64 h-1 bg-stone-900 rounded-full overflow-hidden">
                 <div className={cn(
-                    "h-full bg-emerald-500 rounded-full transition-all duration-[2000ms] ease-out",
+                    "h-full bg-emerald-500 rounded-full transition-all duration-[2s] ease-out",
                     show ? "w-full" : "w-full"
                 )}></div>
             </div>
