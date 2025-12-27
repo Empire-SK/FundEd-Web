@@ -59,6 +59,7 @@ export default function SettingsPage() {
   const [editName, setEditName] = useState('');
   const [editEmail, setEditEmail] = useState('');
   const [editPassword, setEditPassword] = useState('');
+  const [editImage, setEditImage] = useState('');
 
   const handleFileSelect = async (file: File) => {
     if (!file) return;
@@ -165,10 +166,24 @@ export default function SettingsPage() {
     setIsSubmittingUser(false);
   };
 
+  const handleProfileImageSelect = (file: File) => {
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) {
+      toast({ variant: "destructive", title: "File Too Large", description: "Limit is 2MB" });
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      setEditImage(e.target?.result as string);
+    };
+    reader.readAsDataURL(file);
+  };
+
   const startEdit = (user: any) => {
     setEditingUser(user);
     setEditName(user.name || '');
     setEditEmail(user.email || '');
+    setEditImage(user.image || '');
     setEditPassword(''); // Don't prefill password
     setOpenEdit(true);
   };
@@ -184,7 +199,8 @@ export default function SettingsPage() {
       id: editingUser.id,
       name: editName,
       email: editEmail,
-      password: editPassword // Optional
+      password: editPassword,
+      image: editImage
     });
 
     if (res.success) {
@@ -192,8 +208,6 @@ export default function SettingsPage() {
       setOpenEdit(false);
       setEditingUser(null);
       fetchData();
-      // If updating self, might need to re-login or update session, but session is secure cookie. 
-      // Changes reflect on next session refresh usually.
     } else {
       toast({ variant: "destructive", title: "Update Failed", description: res.error });
     }
@@ -350,6 +364,38 @@ export default function SettingsPage() {
                   <DialogDescription>Update admin credentials.</DialogDescription>
                 </DialogHeader>
                 <div className="grid gap-4 py-4">
+                  <div className="flex justify-center mb-4">
+                    <div className="relative w-24 h-24 group cursor-pointer">
+                      <Label htmlFor="edit-image" className="cursor-pointer block w-full h-full">
+                        {editImage ? (
+                          <Image
+                            src={editImage}
+                            alt="Profile"
+                            fill
+                            className="rounded-full object-cover border-2 border-emerald-500/50"
+                          />
+                        ) : (
+                          <div className="w-full h-full rounded-full bg-emerald-500/10 border-2 border-dashed border-emerald-500/30 flex items-center justify-center text-emerald-500">
+                            <PlusCircle className="w-8 h-8 opacity-50" />
+                          </div>
+                        )}
+                        <div className="absolute inset-0 bg-black/60 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                          <span className="text-xs text-white">Change</span>
+                        </div>
+                      </Label>
+                      <Input
+                        id="edit-image"
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) handleProfileImageSelect(file);
+                        }}
+                      />
+                    </div>
+                  </div>
+
                   <div className="grid gap-2">
                     <Label>Full Name</Label>
                     <Input placeholder="John Doe" value={editName} onChange={(e) => setEditName(e.target.value)} />

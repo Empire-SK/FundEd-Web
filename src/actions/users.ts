@@ -4,11 +4,13 @@ import prisma from '@/lib/db';
 import bcrypt from 'bcryptjs';
 import { revalidatePath } from 'next/cache';
 
+import { getSession } from '@/lib/auth';
+
 export async function getUsers() {
     try {
         const users = await prisma.user.findMany({
             orderBy: { createdAt: 'desc' },
-            select: { id: true, name: true, email: true, role: true, createdAt: true }
+            select: { id: true, name: true, email: true, role: true, image: true, createdAt: true }
         });
         return { success: true, data: users };
     } catch (error) {
@@ -17,7 +19,30 @@ export async function getUsers() {
     }
 }
 
-export async function createUser(data: { name: string; email: string; password: string }) {
+export async function getCurrentAdmin() {
+    try {
+        const session = await getSession();
+        if (!session || !session.user || !session.user.id) {
+            return { success: false, error: "Unauthorized" };
+        }
+
+        const user = await prisma.user.findUnique({
+            where: { id: session.user.id },
+            select: { id: true, name: true, email: true, role: true, image: true }
+        });
+
+        if (!user) {
+             return { success: false, error: "User not found" };
+        }
+
+        return { success: true, data: user };
+    } catch (error) {
+        console.error("Failed to get current admin:", error);
+        return { success: false, error: "Failed to get current admin" };
+    }
+}
+
+export async function createUser(data: { name: string; email: string; password: string; image?: string }) {
     try {
         // Check if email exists
         const existing = await prisma.user.findUnique({
@@ -35,6 +60,7 @@ export async function createUser(data: { name: string; email: string; password: 
                 name: data.name,
                 email: data.email,
                 password: hashedPassword,
+                image: data.image,
                 role: 'admin' // Default to admin for now
             }
         });
@@ -64,7 +90,7 @@ export async function deleteUser(userId: string) {
     }
 }
 
-export async function updateUser(data: { id: string; name: string; email: string; password?: string }) {
+export async function updateUser(data: { id: string; name: string; email: string; password?: string; image?: string }) {
     try {
         // Check if email exists for *other* users
         const existing = await prisma.user.findFirst({
@@ -81,6 +107,7 @@ export async function updateUser(data: { id: string; name: string; email: string
         const updateData: any = {
             name: data.name,
             email: data.email,
+            image: data.image
         };
 
         if (data.password && data.password.trim() !== '') {
