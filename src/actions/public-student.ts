@@ -61,6 +61,7 @@ export async function getStudentPublicStatus(query: string) {
             
             return {
                 ...summary,
+                status,
                 pendingAmount: Math.max(0, pending)
             };
         });
