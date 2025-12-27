@@ -259,22 +259,22 @@ export default function EventPaymentsPage() {
 
       {/* Stats Grid */}
       {event && (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-          <Card className="glass-card">
+        <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 min-w-0">
+          <Card className="glass-card w-full max-w-full overflow-hidden">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Total Collection</CardTitle>
-              <DollarSign className="h-4 w-4 text-emerald-500" />
+              <CardTitle className="text-sm font-medium truncate pr-2">Total Collection</CardTitle>
+              <DollarSign className="h-4 w-4 text-emerald-500 shrink-0" />
             </CardHeader>
             <CardContent>
               {(() => {
                 const paidTxns = transactions.filter(t => !t.id.startsWith('pending_') && t.status === 'Paid');
                 const totalCollected = paidTxns.reduce((sum, t) => sum + t.amount, 0);
-                const totalExpected = event.cost * (event.participantCount || students.length || 0);
+                const totalExpected = event.cost * (stats.totalStudents || 0);
 
                 return (
                   <div>
-                    <div className="text-2xl font-bold">₹{totalCollected.toLocaleString()}</div>
-                    <p className="text-xs text-muted-foreground">
+                    <div className="text-2xl font-bold truncate">₹{totalCollected.toLocaleString()}</div>
+                    <p className="text-xs text-muted-foreground truncate">
                       Target: ₹{totalExpected.toLocaleString()}
                     </p>
                   </div>
@@ -283,21 +283,21 @@ export default function EventPaymentsPage() {
             </CardContent>
           </Card>
 
-          <Card className="glass-card">
+          <Card className="glass-card w-full max-w-full overflow-hidden">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Efficiency</CardTitle>
-              <ArrowLeft className="h-4 w-4 text-blue-500 rotate-45" />
+              <CardTitle className="text-sm font-medium truncate pr-2">Efficiency</CardTitle>
+              <ArrowLeft className="h-4 w-4 text-blue-500 rotate-45 shrink-0" />
             </CardHeader>
             <CardContent>
               {(() => {
                 const paidTxns = transactions.filter(t => !t.id.startsWith('pending_') && t.status === 'Paid');
                 const totalCollected = paidTxns.reduce((sum, t) => sum + t.amount, 0);
-                const totalExpected = event.cost * (event.participantCount || students.length || 0);
+                const totalExpected = event.cost * (stats.totalStudents || 0);
                 const efficiency = totalExpected > 0 ? (totalCollected / totalExpected) * 100 : 0;
 
                 return (
                   <div>
-                    <div className="text-2xl font-bold">{efficiency.toFixed(1)}%</div>
+                    <div className="text-2xl font-bold truncate">{efficiency.toFixed(1)}%</div>
                     <Progress value={efficiency} className="h-1 mt-2" />
                   </div>
                 );
@@ -305,10 +305,10 @@ export default function EventPaymentsPage() {
             </CardContent>
           </Card>
 
-          <Card className="glass-card">
+          <Card className="glass-card w-full max-w-full overflow-hidden">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Outstanding</CardTitle>
-              <div className="h-4 w-4 text-amber-500 font-bold">!</div>
+              <CardTitle className="text-sm font-medium truncate pr-2">Outstanding</CardTitle>
+              <div className="h-4 w-4 text-amber-500 font-bold shrink-0 flex items-center justify-center">!</div>
             </CardHeader>
             <CardContent>
               {(() => {
@@ -318,8 +318,8 @@ export default function EventPaymentsPage() {
 
                 return (
                   <div>
-                    <div className="text-2xl font-bold">₹{outstanding.toLocaleString()}</div>
-                    <p className="text-xs text-muted-foreground">
+                    <div className="text-2xl font-bold truncate">₹{outstanding.toLocaleString()}</div>
+                    <p className="text-xs text-muted-foreground truncate">
                       {pendingTxns.length} students pending
                     </p>
                   </div>
@@ -328,10 +328,10 @@ export default function EventPaymentsPage() {
             </CardContent>
           </Card>
 
-          <Card className="glass-card">
+          <Card className="glass-card w-full max-w-full overflow-hidden">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Top Class</CardTitle>
-              <Check className="h-4 w-4 text-purple-500" />
+              <CardTitle className="text-sm font-medium truncate pr-2">Top Class</CardTitle>
+              <Check className="h-4 w-4 text-purple-500 shrink-0" />
             </CardHeader>
             <CardContent>
               {(() => {
@@ -366,8 +366,8 @@ export default function EventPaymentsPage() {
 
                 return (
                   <div>
-                    <div className="text-2xl font-bold">{bestClass}</div>
-                    <p className="text-xs text-muted-foreground">
+                    <div className="text-2xl font-bold truncate">{bestClass}</div>
+                    <p className="text-xs text-muted-foreground truncate">
                       {(bestRate * 100).toFixed(0)}% completion
                     </p>
                   </div>
@@ -386,14 +386,16 @@ export default function EventPaymentsPage() {
             {filteredTransactions?.map(transaction => (
               <Card key={transaction.id} className="w-full">
                 <CardHeader>
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <CardTitle className="text-lg font-code">
+                  <div className="flex justify-between items-start gap-2">
+                    <div className="min-w-0 flex-1">
+                      <CardTitle className="text-lg font-code truncate">
                         {transaction.id.startsWith('pending_') ? 'BALANCE DUE' : transaction.id}
                       </CardTitle>
-                      <CardDescription>{transaction.studentName} ({transaction.studentRoll})</CardDescription>
+                      <CardDescription className="truncate">{transaction.studentName} ({transaction.studentRoll})</CardDescription>
                     </div>
-                    <StatusBadge status={transaction.status} />
+                    <div className="shrink-0">
+                      <StatusBadge status={transaction.status} />
+                    </div>
                   </div>
                 </CardHeader>
                 <CardContent className="grid gap-4">

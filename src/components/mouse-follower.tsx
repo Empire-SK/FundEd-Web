@@ -6,16 +6,19 @@ export function MouseFollower() {
     const blobRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
+        // Performance check: Don't run on mobile
+        if (window.matchMedia('(hover: none)').matches || window.innerWidth < 768) {
+            return;
+        }
+
         const handleMouseMove = (e: MouseEvent) => {
             if (!blobRef.current) return;
-
             const { clientX, clientY } = e;
-
             // Direct DOM manipulation guarantees 60fps without React re-renders
             blobRef.current.animate({
                 transform: `translate(${clientX - 250}px, ${clientY - 250}px)`
             }, {
-                duration: 2000, // Slower duration for smoother lag effect
+                duration: 2000,
                 fill: "forwards",
                 easing: "ease-out"
             });
@@ -30,7 +33,7 @@ export function MouseFollower() {
     return (
         <div
             ref={blobRef}
-            className="fixed w-[500px] h-[500px] bg-emerald-500/[0.03] rounded-full blur-[80px] pointer-events-none mix-blend-screen z-[5] will-change-transform"
+            className="fixed w-[500px] h-[500px] bg-emerald-500/[0.03] rounded-full blur-[80px] pointer-events-none mix-blend-screen z-[5] will-change-transform hidden md:block" // Hidden on mobile
             style={{
                 top: 0,
                 left: 0,

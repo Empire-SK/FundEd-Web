@@ -100,7 +100,7 @@ export default function PaymentPage() {
     if (selectedStudent && event) {
       const paid = selectedStudent.paidAmount || 0;
       const balance = Math.max(0, event.cost - paid);
-      setAmountToPay(balance.toString());
+      // setAmountToPay(balance.toString()); // User requested no default value
     } else {
       setAmountToPay('');
     }
@@ -532,7 +532,7 @@ export default function PaymentPage() {
                         }}
                         max={event.cost - (selectedStudent.paidAmount || 0)}
                         className="pl-7 bg-black/20 border-white/10 hover:bg-white/5 focus-visible:ring-emerald-500/20 text-stone-200"
-                        placeholder="Enter amount"
+                        placeholder="Enter the amount going to pay"
                       />
                     </div>
                     <p className="text-xs text-stone-500 text-right">

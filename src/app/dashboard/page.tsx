@@ -53,7 +53,7 @@ interface StatCardProps {
 function StatCard({ title, value, description, icon, trend, className }: StatCardProps) {
     return (
         <GlassCard className={`relative overflow-hidden transition-all hover:shadow-lg w-full min-w-0 ${className}`}>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 pr-12">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 pr-10 md:pr-12">
                 <CardTitle className="text-sm font-medium truncate pr-2">{title}</CardTitle>
                 <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-primary shrink-0">
                     {icon}
@@ -147,7 +147,7 @@ export default function DashboardPage() {
             </div>
 
             {/* Stats Grid */}
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 min-w-0">
+            <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 min-w-0">
                 <StatCard
                     title="Total Events"
                     value={stats.totalEvents.toString()}
@@ -203,14 +203,16 @@ export default function DashboardPage() {
                         {recentTransactions?.map(transaction => (
                             <GlassCard key={transaction.id} className="w-full border-l-4 border-l-primary/20">
                                 <CardHeader>
-                                    <div className="flex justify-between items-start">
-                                        <div className="min-w-0 flex-1 mr-2">
+                                    <div className="flex justify-between items-start gap-2">
+                                        <div className="min-w-0 flex-1">
                                             <CardTitle className="text-sm font-code truncate" title={transaction.id}>
                                                 #{transaction.id.slice(-8)}
                                             </CardTitle>
                                             <CardDescription className="truncate">{transaction.studentName}</CardDescription>
                                         </div>
-                                        <StatusBadge status={transaction.status} />
+                                        <div className="shrink-0">
+                                            <StatusBadge status={transaction.status} />
+                                        </div>
                                     </div>
                                 </CardHeader>
                                 <CardContent className="grid gap-4">

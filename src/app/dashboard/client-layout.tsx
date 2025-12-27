@@ -290,7 +290,7 @@ export default function DashboardClientLayout({
                                 </DropdownMenuContent>
                             </DropdownMenu>
                         </header>
-                        <main className="flex flex-1 flex-col gap-4 p-2 sm:p-4 md:gap-8 md:p-8 relative z-10 overflow-hidden w-full">
+                        <main className="flex flex-1 flex-col gap-4 p-2 sm:p-4 md:gap-8 md:p-8 relative z-10 overflow-x-hidden w-full">
                             {children}
                         </main>
 

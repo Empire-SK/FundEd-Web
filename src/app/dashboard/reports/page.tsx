@@ -322,7 +322,7 @@ export default function ReportsPage() {
             </div>
 
             {/* Report Configuration */}
-            <GlassCard className="p-6 hover-lift">
+            <GlassCard className="p-4 sm:p-6 hover-lift">
                 <div className="flex items-center gap-2 mb-6">
                     <FileText className="h-5 w-5 text-primary" />
                     <h3 className="text-lg font-semibold">Report Configuration</h3>

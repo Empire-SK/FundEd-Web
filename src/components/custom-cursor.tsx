@@ -7,6 +7,11 @@ export function CustomCursor() {
     const cursorRingRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
+        // Performance check: Don't run on mobile
+        if (window.matchMedia('(hover: none)').matches || window.innerWidth < 768) {
+            return;
+        }
+
         const handleMouseMove = (e: MouseEvent) => {
             // Direct DOM manipulation for high-performance custom cursor
             if (cursorRef.current && cursorRingRef.current) {
@@ -30,7 +35,7 @@ export function CustomCursor() {
     }, []);
 
     return (
-        <>
+        <div className="hidden md:block">
             {/* Custom Cursor Dot - Smaller and more subtle */}
             <div
                 ref={cursorRef}
@@ -42,6 +47,6 @@ export function CustomCursor() {
                 ref={cursorRingRef}
                 className="fixed top-0 left-0 w-10 h-10 rounded-full border border-emerald-500/40 pointer-events-none z-[9998] transition-all duration-200 ease-out -translate-x-1/2 -translate-y-1/2 opacity-60"
             />
-        </>
+        </div>
     );
 }
